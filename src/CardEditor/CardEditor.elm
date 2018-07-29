@@ -11,18 +11,22 @@ port module CardEditor.CardEditor
         , createCard
         , Content
         , Event(..)
+        , encodeCard
+        , cardDecoder
         )
 
 import Array exposing (Array)
 import Html exposing (Attribute, Html, button, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
 import Html.Attributes exposing (contenteditable, for, id, name, src, step, style, type_, value)
 import Html.Events exposing (on, onClick, onInput)
-import Json.Decode as Json
+import Json.Decode as Json exposing (Value)
+import Json.Decode.Pipeline as JsonPipeline
+import Json.Encode
 import Mouse exposing (Position, position)
+import Random.Pcg
 import Tachyons exposing (classes, tachyons)
 import Tachyons.Classes exposing (absolute, b, b__black_20, ba, black_70, br2, br3, br4, cover, db, f3, f4, f6, flex, flex_row, fw6, hover_black, items_center, justify_center, lh_copy, mb2, measure, ml1, ml2, ml3, ml5, mt2, mt3, o_10, o_20, o_50, overflow_hidden, pa2, pa3, ph1, ph2, pt1, pv2, relative, right_0, serif, top_0, top_1, w5, w_100, w_50, w_80, w_90, white_20, white_40, white_50, white_70)
 import Uuid
-import Random.Pcg
 
 
 type Event
@@ -51,6 +55,76 @@ type alias CardModel =
     , draggedHiddenCard : Maybe (Drag HiddenCard)
     , id : CardId
     }
+
+
+cardDecoder : Json.Decoder Model
+cardDecoder =
+    (JsonPipeline.decode CardModel
+        |> JsonPipeline.required "nextHiddenCardId" Json.int
+        |> JsonPipeline.required "cardContent" cardContentDecoder
+        |> JsonPipeline.required "hiddenCards" (Json.array hiddenCardDecoder)
+        |> JsonPipeline.hardcoded Nothing
+        |> JsonPipeline.required "id" cardIdDecoder
+    )
+        |> Json.map Created
+
+
+cardContentDecoder : Json.Decoder Content
+cardContentDecoder =
+    Json.string |> Json.map Content
+
+
+hiddenCardDecoder : Json.Decoder HiddenCard
+hiddenCardDecoder =
+    JsonPipeline.decode HiddenCard
+        |> JsonPipeline.required "id" Json.int
+        |> JsonPipeline.required "number" Json.int
+        |> JsonPipeline.required "color" Json.string
+        |> JsonPipeline.required "sizeInEm" Json.float
+        |> JsonPipeline.required "top" Json.float
+        |> JsonPipeline.required "left" Json.float
+        |> JsonPipeline.required "opacity" Json.float
+        |> JsonPipeline.required "rotation" Json.float
+
+
+cardIdDecoder : Json.Decoder CardId
+cardIdDecoder =
+    Uuid.decoder |> Json.map CardId
+
+
+encodeCard : Model -> Maybe Json.Value
+encodeCard model =
+    case model of
+        NotCreated ->
+            Nothing
+
+        Created cardModel ->
+            Json.Encode.object
+                [ ( "nextHiddenCardId", Json.Encode.int cardModel.nextHiddenCardId )
+                , ( "cardContent", contentToString cardModel.cardContent |> Json.Encode.string )
+                , ( "hiddenCards", Array.map encodeHiddenCard cardModel.hiddenCards |> Json.Encode.array )
+                , ( "id", idToString cardModel.id |> Json.Encode.string )
+                ]
+                |> Just
+
+
+encodeHiddenCard : HiddenCard -> Json.Value
+encodeHiddenCard hiddenCard =
+    Json.Encode.object
+        [ ( "id", Json.Encode.int hiddenCard.id )
+        , ( "number", Json.Encode.int hiddenCard.number )
+        , ( "color", Json.Encode.string hiddenCard.color )
+        , ( "sizeInEm", Json.Encode.float hiddenCard.sizeInEm )
+        , ( "top", Json.Encode.float hiddenCard.top )
+        , ( "left", Json.Encode.float hiddenCard.left )
+        , ( "opacity", Json.Encode.float hiddenCard.opacity )
+        , ( "rotation", Json.Encode.float hiddenCard.rotation )
+        ]
+
+
+idToString : CardId -> String
+idToString (CardId cardId) =
+    Uuid.toString cardId
 
 
 defaultHiddenCard : Int -> HiddenCard
@@ -556,7 +630,7 @@ viewHiddenCard maybeHiddenCard hiddenCard =
     in
         div
             [ classes [ absolute, f4, o_10, b ]
-            , style (hiddenCardStyles hiddenCard ++ transformStyles)
+            , style (( "cursor", "move" ) :: hiddenCardStyles hiddenCard ++ transformStyles)
             , onMouseDown (DragStart hiddenCard)
             ]
             [ text (toString hiddenCard.number) ]
@@ -580,7 +654,6 @@ hiddenCardStyles hiddenCard =
     , ( "opacity", toString hiddenCard.opacity )
     , ( "transform", "rotate(" ++ (toString hiddenCard.rotation) ++ "deg)" )
     , ( "user-select", "none" )
-    , ( "cursor", "move" )
     ]
 
 

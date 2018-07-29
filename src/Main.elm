@@ -1,18 +1,22 @@
-module Main exposing (..)
+port module Main exposing (..)
 
 import Array exposing (Array)
 import Array.Extra
-import CardEditor.CardEditor as CardEditor exposing (Content(Content), Event(Discard), createCard, viewCard, viewCardController)
+import CardEditor.CardEditor as CardEditor exposing (Content(Content), Event(Discard), createCard, encodeCard, viewCard, viewCardController)
 import Html exposing (div, text)
 import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)
+import Json.Decode exposing (Value)
+import Json.Decode.Pipeline as JsonPipeline
+import Json.Encode
 import Tachyons exposing (classes, tachyons)
 import Tachyons.Classes exposing (flex, flex_row, mr0, mr1, mr2, mt2, z_0)
+import Time
 
 
-main : Program Never Model Msg
+main : Program Value Model Msg
 main =
-    Html.program
+    Html.programWithFlags
         { init = init
         , view = view
         , update = update
@@ -20,8 +24,23 @@ main =
         }
 
 
-init : ( Model, Cmd Msg )
-init =
+init : Value -> ( Model, Cmd Msg )
+init savedGame =
+    let
+        decodedModelResult =
+            Json.Decode.decodeValue Json.Decode.string savedGame
+                |> Result.andThen (Json.Decode.decodeString modelDecoder)
+    in
+        case decodedModelResult of
+            Ok model ->
+                ( model, Cmd.none )
+
+            Err _ ->
+                newGameSet
+
+
+newGameSet : ( Model, Cmd Msg )
+newGameSet =
     let
         ( cardModel, cardCommand ) =
             createCard (Content "Random content")
@@ -29,7 +48,7 @@ init =
         ( cardModel2, cardCommand2 ) =
             createCard (Content "Random content")
     in
-        ( (Array.fromList [ cardModel, cardModel, cardModel, cardModel ] |> Model) NoCard
+        ( (Array.fromList [ cardModel, cardModel, cardModel, cardModel ] |> Model) AutoSave NoCard
         , Cmd.batch
             [ Cmd.map (CardMessage cardModel) cardCommand
             , Cmd.map (CardMessage cardModel2) cardCommand2
@@ -45,13 +64,43 @@ init =
 
 type alias Model =
     { cards : Array CardEditor.Model
+    , saveOption : SaveOption
     , cardBeingEdited : CardBeingEdited
     }
+
+
+type SaveOption
+    = AutoSave
+    | ManualOnly
 
 
 type CardBeingEdited
     = NoCard
     | Card CardEditor.Model CardEditor.Model
+
+
+modelDecoder : Json.Decode.Decoder Model
+modelDecoder =
+    JsonPipeline.decode Model
+        |> JsonPipeline.required "cards" cardsArrayDecoder
+        |> JsonPipeline.required "autosave" autoSaveDecoder
+        |> JsonPipeline.hardcoded NoCard
+
+
+cardsArrayDecoder : Json.Decode.Decoder (Array CardEditor.Model)
+cardsArrayDecoder =
+    Json.Decode.array CardEditor.cardDecoder
+
+
+autoSaveDecoder =
+    Json.Decode.bool
+        |> Json.Decode.map
+            (\isAutoSave ->
+                if isAutoSave then
+                    AutoSave
+                else
+                    ManualOnly
+            )
 
 
 
@@ -62,6 +111,7 @@ type Msg
     = CardMessage CardEditor.Model CardEditor.Msg
     | CardBeingEditedMessage CardEditor.Msg
     | EditCard CardEditor.Model
+    | SaveDeck
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -108,6 +158,9 @@ update msg model =
 
         EditCard card ->
             ( { model | cardBeingEdited = Card card card }, Cmd.none )
+
+        SaveDeck ->
+            ( model, sendToSaveModule model )
 
 
 updateCard : CardEditor.Msg -> CardEditor.Model -> ( CardEditor.Model, Cmd Msg, CardEditor.Event )
@@ -188,14 +241,55 @@ viewCardBeingEdited card =
 
 
 
+-- PORTS
+
+
+sendToSaveModule : Model -> Cmd Msg
+sendToSaveModule model =
+    Json.Encode.encode 0 (encodeModel model)
+        |> toSaveModule
+
+
+port toSaveModule : String -> Cmd msg
+
+
+encodeModel : Model -> Json.Encode.Value
+encodeModel model =
+    Json.Encode.object
+        [ ( "cards", Array.Extra.filterMap encodeCard model.cards |> Json.Encode.array )
+        , ( "autosave", encodeAutoSave model.saveOption )
+        ]
+
+
+encodeAutoSave : SaveOption -> Json.Encode.Value
+encodeAutoSave saveOption =
+    (case saveOption of
+        AutoSave ->
+            True
+
+        ManualOnly ->
+            False
+    )
+        |> Json.Encode.bool
+
+
+
 -- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    case model.cardBeingEdited of
-        NoCard ->
-            Sub.none
+    Sub.batch
+        [ case model.saveOption of
+            AutoSave ->
+                Time.every (30 * Time.second) (always SaveDeck)
 
-        Card _ card ->
-            CardEditor.subscriptions card |> Sub.map CardBeingEditedMessage
+            ManualOnly ->
+                Sub.none
+        , case model.cardBeingEdited of
+            NoCard ->
+                Sub.none
+
+            Card _ card ->
+                CardEditor.subscriptions card |> Sub.map CardBeingEditedMessage
+        ]
