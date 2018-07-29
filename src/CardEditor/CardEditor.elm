@@ -6,27 +6,22 @@ port module CardEditor.CardEditor
         , viewCard
         , viewStaticCard
         , viewCardController
-        , Content(Content)
         , Msg
         , createCard
-        , Content
         , Event(..)
         , encodeCard
         , cardDecoder
         )
 
 import Array exposing (Array)
+import CardEditor.Card as Card exposing (CardId, HiddenCard, contentToString, createCardCommand)
 import Html exposing (Attribute, Html, button, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
 import Html.Attributes exposing (contenteditable, for, id, name, src, step, style, type_, value)
 import Html.Events exposing (on, onClick, onInput)
-import Json.Decode as Json exposing (Value)
-import Json.Decode.Pipeline as JsonPipeline
-import Json.Encode
+import Json.Decode as Decode exposing (Decoder)
 import Mouse exposing (Position, position)
-import Random.Pcg
 import Tachyons exposing (classes, tachyons)
-import Tachyons.Classes exposing (absolute, b, b__black_20, ba, black_70, br2, br3, br4, cover, db, f3, f4, f6, flex, flex_row, fw6, hover_black, items_center, justify_center, lh_copy, mb2, measure, ml1, ml2, ml3, ml5, mt2, mt3, o_10, o_20, o_50, overflow_hidden, pa2, pa3, ph1, ph2, pt1, pv2, relative, right_0, serif, top_0, top_1, w5, w_100, w_50, w_80, w_90, white_20, white_40, white_50, white_70)
-import Uuid
+import Tachyons.Classes exposing (absolute, b, b__black_10, b__black_20, ba, bg_gold, black_70, br2, br3, br4, br_100, cover, db, f3, f4, f6, flex, flex_row, fw6, h2, hover_black, items_center, justify_center, left_0, left_1, lh_copy, mb2, measure, ml1, ml2, ml3, ml5, mt2, mt3, o_10, o_20, o_50, overflow_hidden, pa2, pa3, ph1, ph2, pt1, pv2, relative, right_0, serif, top_0, top_1, w2, w5, w_100, w_50, w_80, w_90, white_20, white_40, white_50, white_70)
 
 
 type Event
@@ -37,94 +32,22 @@ type Event
 
 type Model
     = NotCreated
-    | Created CardModel
+    | Created Card.Model
 
 
-type CardId
-    = CardId Uuid.Uuid
-
-
-type Content
-    = Content String
-
-
-type alias CardModel =
-    { nextHiddenCardId : Int
-    , cardContent : Content
-    , hiddenCards : Array HiddenCard
-    , draggedHiddenCard : Maybe (Drag HiddenCard)
-    , id : CardId
-    }
-
-
-cardDecoder : Json.Decoder Model
+cardDecoder : Decoder Model
 cardDecoder =
-    (JsonPipeline.decode CardModel
-        |> JsonPipeline.required "nextHiddenCardId" Json.int
-        |> JsonPipeline.required "cardContent" cardContentDecoder
-        |> JsonPipeline.required "hiddenCards" (Json.array hiddenCardDecoder)
-        |> JsonPipeline.hardcoded Nothing
-        |> JsonPipeline.required "id" cardIdDecoder
-    )
-        |> Json.map Created
+    Card.decoder |> Decode.map Created
 
 
-cardContentDecoder : Json.Decoder Content
-cardContentDecoder =
-    Json.string |> Json.map Content
-
-
-hiddenCardDecoder : Json.Decoder HiddenCard
-hiddenCardDecoder =
-    JsonPipeline.decode HiddenCard
-        |> JsonPipeline.required "id" Json.int
-        |> JsonPipeline.required "number" Json.int
-        |> JsonPipeline.required "color" Json.string
-        |> JsonPipeline.required "sizeInEm" Json.float
-        |> JsonPipeline.required "top" Json.float
-        |> JsonPipeline.required "left" Json.float
-        |> JsonPipeline.required "opacity" Json.float
-        |> JsonPipeline.required "rotation" Json.float
-
-
-cardIdDecoder : Json.Decoder CardId
-cardIdDecoder =
-    Uuid.decoder |> Json.map CardId
-
-
-encodeCard : Model -> Maybe Json.Value
+encodeCard : Model -> Maybe Decode.Value
 encodeCard model =
     case model of
         NotCreated ->
             Nothing
 
         Created cardModel ->
-            Json.Encode.object
-                [ ( "nextHiddenCardId", Json.Encode.int cardModel.nextHiddenCardId )
-                , ( "cardContent", contentToString cardModel.cardContent |> Json.Encode.string )
-                , ( "hiddenCards", Array.map encodeHiddenCard cardModel.hiddenCards |> Json.Encode.array )
-                , ( "id", idToString cardModel.id |> Json.Encode.string )
-                ]
-                |> Just
-
-
-encodeHiddenCard : HiddenCard -> Json.Value
-encodeHiddenCard hiddenCard =
-    Json.Encode.object
-        [ ( "id", Json.Encode.int hiddenCard.id )
-        , ( "number", Json.Encode.int hiddenCard.number )
-        , ( "color", Json.Encode.string hiddenCard.color )
-        , ( "sizeInEm", Json.Encode.float hiddenCard.sizeInEm )
-        , ( "top", Json.Encode.float hiddenCard.top )
-        , ( "left", Json.Encode.float hiddenCard.left )
-        , ( "opacity", Json.Encode.float hiddenCard.opacity )
-        , ( "rotation", Json.Encode.float hiddenCard.rotation )
-        ]
-
-
-idToString : CardId -> String
-idToString (CardId cardId) =
-    Uuid.toString cardId
+            Card.encode cardModel |> Just
 
 
 defaultHiddenCard : Int -> HiddenCard
@@ -140,6 +63,10 @@ defaultHiddenCard id =
     }
 
 
+
+---- UPDATE ----
+
+
 type FieldUpdate
     = CardContent String
     | HiddenCardNumber Int String
@@ -151,73 +78,22 @@ type FieldUpdate
     | HiddenCardSize Int String
 
 
-type alias HiddenCard =
-    { id : Int
-    , number : Int
-    , color : String
-    , sizeInEm : Float
-    , top : Float
-    , left : Float
-    , opacity : Float
-    , rotation : Float
-    }
-
-
-type alias DragStartDetails =
-    { initialPosition : Position
-    , parentWidth : Int
-    , parentHeight : Int
-    , layerX : Int
-    , layerY : Int
-    }
-
-
-type alias DragEndDetails =
-    { finalPosition : Position
-    , parentPosition : Position
-    }
-
-
-type alias Drag a =
-    { element : a
-    , currentTopOffset : Int
-    , currentLeftOffset : Int
-    , initialPosition : Position
-    , parentWidth : Int
-    , parentHeight : Int
-    , layerX : Int
-    , layerY : Int
-    }
-
-
-
----- UPDATE ----
-
-
 type Msg
-    = CardCreated CardModel
+    = CardCreated Card.Model
     | UpdateField FieldUpdate
     | AddHiddenCard
     | RemoveHiddenCard Int
-    | DragStart HiddenCard DragStartDetails
+    | DragStart HiddenCard Card.DragStartDetails
     | DragAt Position
-    | DragEnd (Result String DragEndDetails)
+    | DragEnd (Result String Card.DragEndDetails)
     | DiscardChanges
     | SaveChanges
 
 
-createCard : Content -> ( Model, Cmd Msg )
+createCard : Card.Content -> ( Model, Cmd Msg )
 createCard content =
-    Random.Pcg.generate CardCreated
-        (idGenerator
-            |> Random.Pcg.map (CardModel 1 content Array.empty Nothing)
-        )
+    createCardCommand content CardCreated
         |> (\creationCommand -> ( NotCreated, creationCommand ))
-
-
-idGenerator : Random.Pcg.Generator CardId
-idGenerator =
-    Uuid.uuidGenerator |> Random.Pcg.map CardId
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, Event )
@@ -234,7 +110,7 @@ update msg model =
             ( model, Cmd.none, NoEvent )
 
 
-updateCard : Msg -> CardModel -> ( CardModel, Cmd Msg, Event )
+updateCard : Msg -> Card.Model -> ( Card.Model, Cmd Msg, Event )
 updateCard msg model =
     case msg of
         CardCreated _ ->
@@ -323,103 +199,86 @@ updateCard msg model =
                 ( { model | hiddenCards = newHiddenCardsArray }, Cmd.none, NoEvent )
 
         UpdateField (CardContent newContent) ->
-            ( { model | cardContent = Content newContent }, Cmd.none, NoEvent )
+            ( { model | cardContent = Card.Content newContent }, Cmd.none, NoEvent )
 
         UpdateField (HiddenCardColor id newColor) ->
             let
-                hiddenCards =
-                    updateIf
-                        (\hiddenCardNumber -> hiddenCardNumber.id == id)
-                        (\hiddenCardNumber -> { hiddenCardNumber | color = newColor })
-                        model.hiddenCards
+                newModel =
+                    updateHiddenCard model id (\hiddenCard -> { hiddenCard | color = newColor })
             in
-                ( { model | hiddenCards = hiddenCards }, Cmd.none, NoEvent )
+                ( newModel, Cmd.none, NoEvent )
 
         UpdateField (HiddenCardNumber id newNumber) ->
             let
-                hiddenCards =
-                    updateIf
-                        (\hiddenCardNumber -> hiddenCardNumber.id == id)
-                        (\hiddenCardNumber -> { hiddenCardNumber | number = String.toInt newNumber |> Result.withDefault hiddenCardNumber.number })
-                        model.hiddenCards
+                newModel =
+                    updateHiddenCard model
+                        id
+                        (\hiddenCard -> { hiddenCard | number = String.toInt newNumber |> Result.withDefault hiddenCard.number })
             in
-                ( { model | hiddenCards = hiddenCards }, Cmd.none, NoEvent )
+                ( newModel, Cmd.none, NoEvent )
 
         UpdateField (HiddenCardTop id newValue) ->
             let
-                hiddenCards =
-                    updateIf
-                        (\hiddenCard -> hiddenCard.id == id)
-                        (\hiddenCard ->
-                            { hiddenCard
-                                | top = String.toFloat newValue |> Result.withDefault hiddenCard.top
-                            }
-                        )
-                        model.hiddenCards
+                newModel =
+                    updateHiddenCard model
+                        id
+                        (\hiddenCard -> { hiddenCard | top = String.toFloat newValue |> Result.withDefault hiddenCard.top })
             in
-                ( { model | hiddenCards = hiddenCards }, Cmd.none, NoEvent )
+                ( newModel, Cmd.none, NoEvent )
 
         UpdateField (HiddenCardOpacity id newValue) ->
             let
-                hiddenCards =
-                    updateIf
-                        (\hiddenCard -> hiddenCard.id == id)
-                        (\hiddenCard ->
-                            { hiddenCard
-                                | opacity = String.toFloat newValue |> Result.withDefault hiddenCard.opacity
-                            }
-                        )
-                        model.hiddenCards
+                newModel =
+                    updateHiddenCard model
+                        id
+                        (\hiddenCard -> { hiddenCard | opacity = String.toFloat newValue |> Result.withDefault hiddenCard.opacity })
             in
-                ( { model | hiddenCards = hiddenCards }, Cmd.none, NoEvent )
+                ( newModel, Cmd.none, NoEvent )
 
         UpdateField (HiddenCardSize id newValue) ->
             let
-                hiddenCards =
-                    updateIf
-                        (\hiddenCard -> hiddenCard.id == id)
-                        (\hiddenCard ->
-                            { hiddenCard
-                                | sizeInEm = String.toFloat newValue |> Result.withDefault hiddenCard.sizeInEm
-                            }
-                        )
-                        model.hiddenCards
+                newModel =
+                    updateHiddenCard model
+                        id
+                        (\hiddenCard -> { hiddenCard | sizeInEm = String.toFloat newValue |> Result.withDefault hiddenCard.sizeInEm })
             in
-                ( { model | hiddenCards = hiddenCards }, Cmd.none, NoEvent )
+                ( newModel, Cmd.none, NoEvent )
 
         UpdateField (HiddenCardRotation id newValue) ->
             let
-                hiddenCards =
-                    updateIf
-                        (\hiddenCard -> hiddenCard.id == id)
-                        (\hiddenCard ->
-                            { hiddenCard
-                                | rotation = String.toFloat newValue |> Result.withDefault hiddenCard.rotation
-                            }
-                        )
-                        model.hiddenCards
+                newModel =
+                    updateHiddenCard model
+                        id
+                        (\hiddenCard -> { hiddenCard | rotation = String.toFloat newValue |> Result.withDefault hiddenCard.rotation })
             in
-                ( { model | hiddenCards = hiddenCards }, Cmd.none, NoEvent )
+                ( newModel, Cmd.none, NoEvent )
 
         UpdateField (HiddenCardLeft id newValue) ->
             let
-                hiddenCards =
-                    updateIf
-                        (\hiddenCard -> hiddenCard.id == id)
-                        (\hiddenCard ->
-                            { hiddenCard
-                                | left = String.toFloat newValue |> Result.withDefault hiddenCard.left
-                            }
-                        )
-                        model.hiddenCards
+                newModel =
+                    updateHiddenCard model
+                        id
+                        (\hiddenCard -> { hiddenCard | left = String.toFloat newValue |> Result.withDefault hiddenCard.left })
             in
-                ( { model | hiddenCards = hiddenCards }, Cmd.none, NoEvent )
+                ( newModel, Cmd.none, NoEvent )
 
         DiscardChanges ->
             ( model, Cmd.none, Discard )
 
         SaveChanges ->
             ( model, Cmd.none, Save )
+
+
+updateHiddenCard : Card.Model -> Int -> (HiddenCard -> HiddenCard) -> Card.Model
+updateHiddenCard cardModel hiddenCardId updateFunction =
+    let
+        newHiddenCards =
+            updateIf
+                (\hiddenCard -> hiddenCard.id == hiddenCardId)
+                updateFunction
+                cardModel.hiddenCards
+    in
+        ({ cardModel | hiddenCards = newHiddenCards })
 
 
 updateIf : (a -> Bool) -> (a -> a) -> Array a -> Array a
@@ -441,26 +300,19 @@ updateIf filter transform elements =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     case model of
-        Created cardModel ->
-            case cardModel.draggedHiddenCard of
+        Created card ->
+            case card.draggedHiddenCard of
                 Nothing ->
                     Sub.none
 
                 Just _ ->
-                    Sub.batch [ Mouse.moves DragAt, mouseUp (Json.decodeValue dragEndDecoder >> DragEnd) ]
+                    Sub.batch [ Mouse.moves DragAt, mouseUp (Decode.decodeValue Card.dragEndDecoder >> DragEnd) ]
 
         _ ->
             Sub.none
 
 
-port mouseUp : (Json.Value -> msg) -> Sub msg
-
-
-dragEndDecoder : Json.Decoder DragEndDetails
-dragEndDecoder =
-    Json.map2 DragEndDetails
-        (Json.map2 Position (Json.at [ "finalPosition", "x" ] Json.int) (Json.at [ "finalPosition", "y" ] Json.int))
-        (Json.map2 Position (Json.at [ "parentPosition", "x" ] Json.int) (Json.at [ "parentPosition", "y" ] Json.int))
+port mouseUp : (Decode.Value -> msg) -> Sub msg
 
 
 
@@ -472,7 +324,7 @@ dragEndDecoder =
 view : Model -> Html Msg
 view model =
     case model of
-        Created cardModel ->
+        Created card ->
             div
                 [ style [ ( "margin-left", "50px" ) ]
                 , classes [ flex, flex_row ]
@@ -504,7 +356,10 @@ viewCard model =
         Created cardModel ->
             div
                 [ style (cardStyles "300px" "600px"), classes cardClasses ]
-                [ viewIllustration cardModel.draggedHiddenCard cardModel.hiddenCards, viewCardContent cardModel ]
+                [ viewIllustration cardModel.draggedHiddenCard cardModel.hiddenCards
+                , viewCardContent cardModel
+                , viewNumber 66
+                ]
 
         _ ->
             div [] [ text "Creating card..." ]
@@ -537,7 +392,7 @@ viewStaticIllustration hiddenCards =
         (Array.map viewStaticHiddenCard hiddenCards |> Array.toList |> List.reverse)
 
 
-viewIllustration : Maybe (Drag HiddenCard) -> Array HiddenCard -> Html Msg
+viewIllustration : Maybe (Card.Drag HiddenCard) -> Array HiddenCard -> Html Msg
 viewIllustration maybeDraggedHiddenCard hiddenCards =
     div
         [ style
@@ -552,7 +407,7 @@ viewIllustration maybeDraggedHiddenCard hiddenCards =
         (Array.map (viewHiddenCard maybeDraggedHiddenCard) hiddenCards |> Array.toList |> List.reverse)
 
 
-viewCardContent : CardModel -> Html Msg
+viewCardContent : Card.Model -> Html Msg
 viewCardContent model =
     div
         [ style cardContentStyles
@@ -560,13 +415,13 @@ viewCardContent model =
         ]
         [ div
             [ contenteditable True
-            , on "blur" (Json.map (CardContent >> UpdateField) targetTextContent)
+            , on "blur" (Decode.map (CardContent >> UpdateField) targetTextContent)
             ]
             [ contentToString model.cardContent |> text ]
         ]
 
 
-viewStaticCardContent : CardModel -> Html msg
+viewStaticCardContent : Card.Model -> Html msg
 viewStaticCardContent model =
     div
         [ style cardContentStyles
@@ -574,6 +429,21 @@ viewStaticCardContent model =
         ]
         [ div [] [ contentToString model.cardContent |> text ]
         ]
+
+
+viewNumber : Int -> Html msg
+viewNumber number =
+    div
+        [ classes
+            [ br_100
+            , bg_gold
+            , absolute
+            , top_0
+            , left_0
+            , pa3
+            ]
+        ]
+        [ toString number |> text ]
 
 
 cardContentStyles : List ( String, String )
@@ -590,21 +460,16 @@ cardContentClasses =
     [ absolute, pa3, flex, justify_center, items_center, serif, f4 ]
 
 
-contentToString : Content -> String
-contentToString (Content content) =
-    content
-
-
-targetTextContent : Json.Decoder String
+targetTextContent : Decoder String
 targetTextContent =
-    Json.at [ "target", "textContent" ] Json.string
+    Decode.at [ "target", "textContent" ] Decode.string
 
 
 
 -- Deprecated
 
 
-viewHiddenCard : Maybe (Drag HiddenCard) -> HiddenCard -> Html Msg
+viewHiddenCard : Maybe (Card.Drag HiddenCard) -> HiddenCard -> Html Msg
 viewHiddenCard maybeHiddenCard hiddenCard =
     let
         transformStyles =
@@ -790,14 +655,14 @@ viewHiddenCardForm hiddenCard =
             ]
 
 
-onMouseDown : (DragStartDetails -> Msg) -> Attribute Msg
+onMouseDown : (Card.DragStartDetails -> Msg) -> Attribute Msg
 onMouseDown eventBuilder =
-    Json.map5
-        DragStartDetails
+    Decode.map5
+        Card.DragStartDetails
         position
-        (Json.at [ "target", "parentElement", "offsetWidth" ] Json.int)
-        (Json.at [ "target", "parentElement", "offsetHeight" ] Json.int)
-        (Json.field "layerX" Json.int)
-        (Json.field "layerY" Json.int)
-        |> Json.map eventBuilder
+        (Decode.at [ "target", "parentElement", "offsetWidth" ] Decode.int)
+        (Decode.at [ "target", "parentElement", "offsetHeight" ] Decode.int)
+        (Decode.field "layerX" Decode.int)
+        (Decode.field "layerY" Decode.int)
+        |> Decode.map eventBuilder
         |> on "mousedown"

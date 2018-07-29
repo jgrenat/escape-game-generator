@@ -2,7 +2,8 @@ port module Main exposing (..)
 
 import Array exposing (Array)
 import Array.Extra
-import CardEditor.CardEditor as CardEditor exposing (Content(Content), Event(Discard), createCard, encodeCard, viewCard, viewCardController)
+import CardEditor.CardEditor as CardEditor exposing (Event(Discard), createCard, encodeCard, viewCard, viewCardController)
+import CardEditor.Card exposing (Content(Content))
 import Html exposing (div, text)
 import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)
@@ -92,6 +93,7 @@ cardsArrayDecoder =
     Json.Decode.array CardEditor.cardDecoder
 
 
+autoSaveDecoder : Json.Decode.Decoder SaveOption
 autoSaveDecoder =
     Json.Decode.bool
         |> Json.Decode.map
