@@ -2,22 +2,28 @@ port module Main exposing (..)
 
 import Array exposing (Array)
 import Array.Extra
-import CardEditor.CardEditor as CardEditor exposing (Event(Discard), createCard, encodeCard, viewCard, viewCardController)
-import CardEditor.Card exposing (Content(Content))
-import Html exposing (div, text)
-import Html.Attributes exposing (style)
-import Html.Events exposing (onClick)
+import CardEditor.Card as Card exposing (Content(Content), createCardCommand, idToString)
+import Cmd.Extra
+import Html exposing (button, div, h1, text)
 import Json.Decode exposing (Value)
 import Json.Decode.Pipeline as JsonPipeline
 import Json.Encode
+import Navigation
+import Pages.CardEditor as CardEditorPage
+import Pages.Deck
+import Route
 import Tachyons exposing (classes, tachyons)
-import Tachyons.Classes exposing (flex, flex_row, mr0, mr1, mr2, mt2, z_0)
 import Time
 
 
-main : Program Value Model Msg
+type Page
+    = DeckPage
+    | CardEditorPage Card.Model CardEditorPage.Model
+
+
+main : Program String Model Msg
 main =
-    Html.programWithFlags
+    Navigation.programWithFlags (Route.fromLocation >> SetRoute)
         { init = init
         , view = view
         , update = update
@@ -25,38 +31,40 @@ main =
         }
 
 
-init : Value -> ( Model, Cmd Msg )
-init savedGame =
+init : String -> Navigation.Location -> ( Model, Cmd Msg )
+init savedGame location =
     let
         decodedModelResult =
-            Json.Decode.decodeValue Json.Decode.string savedGame
-                |> Result.andThen (Json.Decode.decodeString modelDecoder)
-    in
-        case decodedModelResult of
-            Ok model ->
-                ( model, Cmd.none )
+            Json.Decode.decodeString modelDecoder savedGame
 
-            Err _ ->
-                newGameSet
+        ( model, initialCommand ) =
+            case decodedModelResult of
+                Ok model ->
+                    ( model, Cmd.none )
+
+                Err _ ->
+                    newGameSet
+    in
+        case Route.fromLocation location of
+            Just (Route.DeckCard _ cardId) ->
+                Array.filter (\card -> card.id == cardId) model.cards
+                    |> Array.get 0
+                    |> Maybe.map (\card -> CardEditorPage card (CardEditorPage.init card))
+                    |> Maybe.map (\cardPage -> { model | page = cardPage })
+                    |> Maybe.withDefault model
+                    |> Cmd.Extra.withNoCmd
+
+            _ ->
+                ( model, Cmd.none )
 
 
 newGameSet : ( Model, Cmd Msg )
 newGameSet =
     let
-        ( cardModel, cardCommand ) =
-            createCard (Content "Random content")
-
-        ( cardModel2, cardCommand2 ) =
-            createCard (Content "Random content")
+        cardCommand =
+            createCardCommand 15 (Content "Random content") CardCreated
     in
-        ( (Array.fromList [ cardModel, cardModel, cardModel, cardModel ] |> Model) AutoSave NoCard
-        , Cmd.batch
-            [ Cmd.map (CardMessage cardModel) cardCommand
-            , Cmd.map (CardMessage cardModel2) cardCommand2
-            , Cmd.map (CardMessage cardModel2) cardCommand2
-            , Cmd.map (CardMessage cardModel2) cardCommand2
-            ]
-        )
+        ( Model Array.empty DeckPage AutoSave, cardCommand )
 
 
 
@@ -64,9 +72,9 @@ newGameSet =
 
 
 type alias Model =
-    { cards : Array CardEditor.Model
+    { cards : Array Card.Model
+    , page : Page
     , saveOption : SaveOption
-    , cardBeingEdited : CardBeingEdited
     }
 
 
@@ -75,22 +83,17 @@ type SaveOption
     | ManualOnly
 
 
-type CardBeingEdited
-    = NoCard
-    | Card CardEditor.Model CardEditor.Model
-
-
 modelDecoder : Json.Decode.Decoder Model
 modelDecoder =
     JsonPipeline.decode Model
         |> JsonPipeline.required "cards" cardsArrayDecoder
+        |> JsonPipeline.hardcoded DeckPage
         |> JsonPipeline.required "autosave" autoSaveDecoder
-        |> JsonPipeline.hardcoded NoCard
 
 
-cardsArrayDecoder : Json.Decode.Decoder (Array CardEditor.Model)
+cardsArrayDecoder : Json.Decode.Decoder (Array Card.Model)
 cardsArrayDecoder =
-    Json.Decode.array CardEditor.cardDecoder
+    Json.Decode.array Card.decoder
 
 
 autoSaveDecoder : Json.Decode.Decoder SaveOption
@@ -110,78 +113,97 @@ autoSaveDecoder =
 
 
 type Msg
-    = CardMessage CardEditor.Model CardEditor.Msg
-    | CardBeingEditedMessage CardEditor.Msg
-    | EditCard CardEditor.Model
+    = CardEditorPageMessage CardEditorPage.Msg
+    | EditCard Card.Model
     | SaveDeck
+    | CreateCard
+    | CardCreated Card.Model
+    | SetRoute (Maybe Route.Route)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        CardMessage cardModel cardMessage ->
+    case ( model.page, msg ) of
+        ( CardEditorPage cardModel cardEditorPageModel, CardEditorPageMessage cardMessage ) ->
             let
-                ( updatedCard, command, _ ) =
-                    updateCard cardMessage cardModel
+                ( updatedModel, command, event ) =
+                    CardEditorPage.update cardMessage cardEditorPageModel
 
                 updatedCards =
-                    replaceCardInArray cardModel updatedCard model.cards
+                    case event of
+                        CardEditorPage.Save cardToSave ->
+                            replaceCardInArray cardModel cardToSave model.cards
+
+                        _ ->
+                            model.cards
+
+                newPage =
+                    case event of
+                        CardEditorPage.NoEvent ->
+                            CardEditorPage cardModel updatedModel
+
+                        _ ->
+                            DeckPage
             in
-                ( { model | cards = updatedCards }, command )
+                ( { model | page = newPage, cards = updatedCards }, Cmd.map CardEditorPageMessage command )
 
-        CardBeingEditedMessage cardMessage ->
-            case model.cardBeingEdited of
-                NoCard ->
-                    ( model, Cmd.none )
+        ( DeckPage, EditCard card ) ->
+            let
+                newUrlCmd =
+                    Route.DeckCard "1" card.id
+                        |> Route.newUrl
+            in
+                ( { model | page = CardEditorPage card (CardEditorPage.init card) }, newUrlCmd )
 
-                Card previousCard changedCard ->
-                    let
-                        ( updatedCard, command, event ) =
-                            updateCard cardMessage changedCard
-
-                        updatedCards =
-                            case event of
-                                CardEditor.Save ->
-                                    replaceCardInArray previousCard updatedCard model.cards
-
-                                _ ->
-                                    model.cards
-
-                        cardBeingEdited : CardBeingEdited
-                        cardBeingEdited =
-                            case event of
-                                CardEditor.NoEvent ->
-                                    Card previousCard updatedCard
-
-                                _ ->
-                                    NoCard
-                    in
-                        ( { model | cardBeingEdited = cardBeingEdited, cards = updatedCards }, command )
-
-        EditCard card ->
-            ( { model | cardBeingEdited = Card card card }, Cmd.none )
-
-        SaveDeck ->
+        ( _, SaveDeck ) ->
             ( model, sendToSaveModule model )
 
+        ( DeckPage, CreateCard ) ->
+            let
+                biggestCardNumber =
+                    Array.toList model.cards
+                        |> List.map .number
+                        |> List.maximum
+                        |> Maybe.withDefault 1
 
-updateCard : CardEditor.Msg -> CardEditor.Model -> ( CardEditor.Model, Cmd Msg, CardEditor.Event )
-updateCard msg model =
-    let
-        ( updatedCard, command, event ) =
-            CardEditor.update msg model
-    in
-        ( updatedCard, Cmd.map (CardMessage updatedCard) command, event )
+                newCardCommand =
+                    createCardCommand (biggestCardNumber + 1) (Content "The content of the card goes here") CardCreated
+            in
+                ( model, newCardCommand )
+
+        ( DeckPage, CardCreated cardModel ) ->
+            ( { model | cards = Array.push cardModel model.cards }, Cmd.none )
+
+        ( _, SetRoute routeMaybe ) ->
+            setRoute routeMaybe model
+
+        _ ->
+            ( model, Cmd.none )
 
 
-replaceCardInArray : CardEditor.Model -> CardEditor.Model -> Array CardEditor.Model -> Array CardEditor.Model
+setRoute : Maybe Route.Route -> Model -> ( Model, Cmd Msg )
+setRoute routeMaybe model =
+    case routeMaybe of
+        Just route ->
+            case route of
+                Route.Home ->
+                    ( { model | page = DeckPage }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+replaceCardInArray : Card.Model -> Card.Model -> Array Card.Model -> Array Card.Model
 replaceCardInArray oldCard newCard cards =
     findIndexForCard oldCard cards
         |> Maybe.map (\id -> Array.Extra.update id (always newCard) cards)
         |> Maybe.withDefault cards
 
 
-findIndexForCard : CardEditor.Model -> Array CardEditor.Model -> Maybe Int
+findIndexForCard : Card.Model -> Array Card.Model -> Maybe Int
 findIndexForCard cardToFind cards =
     Array.indexedMap (,) cards
         |> Array.foldl
@@ -207,38 +229,13 @@ view : Model -> Html.Html Msg
 view model =
     div []
         [ tachyons.css
-        , viewCards model.cards
-        , case model.cardBeingEdited of
-            NoCard ->
-                text ""
+        , h1 [] [ text "Escape Game Generator" ]
+        , case model.page of
+            DeckPage ->
+                Pages.Deck.view CreateCard EditCard model.cards
 
-            Card _ cardModel ->
-                viewCardBeingEdited cardModel
-        ]
-
-
-viewCards : Array CardEditor.Model -> Html.Html Msg
-viewCards cards =
-    cards
-        |> Array.map (\card -> ( card, CardEditor.viewStaticCard "300px" "600px" card ))
-        |> Array.toList
-        |> List.map
-            (\( card, cardHtml ) ->
-                div
-                    [ classes [ mr2 ]
-                    , style [ ( "zoom", "0.5" ) ]
-                    , onClick (EditCard card)
-                    ]
-                    [ cardHtml ]
-            )
-        |> div [ classes [ flex ] ]
-
-
-viewCardBeingEdited : CardEditor.Model -> Html.Html Msg
-viewCardBeingEdited card =
-    div [ classes [ flex, mt2 ] ]
-        [ viewCard card |> Html.map CardBeingEditedMessage
-        , viewCardController card |> Html.map CardBeingEditedMessage
+            CardEditorPage _ cardEditorPageModel ->
+                CardEditorPage.view cardEditorPageModel |> Html.map CardEditorPageMessage
         ]
 
 
@@ -258,7 +255,7 @@ port toSaveModule : String -> Cmd msg
 encodeModel : Model -> Json.Encode.Value
 encodeModel model =
     Json.Encode.object
-        [ ( "cards", Array.Extra.filterMap encodeCard model.cards |> Json.Encode.array )
+        [ ( "cards", Array.map Card.encode model.cards |> Json.Encode.array )
         , ( "autosave", encodeAutoSave model.saveOption )
         ]
 
@@ -288,10 +285,10 @@ subscriptions model =
 
             ManualOnly ->
                 Sub.none
-        , case model.cardBeingEdited of
-            NoCard ->
-                Sub.none
+        , case model.page of
+            CardEditorPage _ card ->
+                CardEditorPage.subscriptions card |> Sub.map CardEditorPageMessage
 
-            Card _ card ->
-                CardEditor.subscriptions card |> Sub.map CardBeingEditedMessage
+            _ ->
+                Sub.none
         ]

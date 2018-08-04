@@ -12,6 +12,8 @@ module CardEditor.Card
         , dragEndDecoder
         , contentToString
         , createCardCommand
+        , idParser
+        , idToString
         )
 
 import Mouse exposing (Position)
@@ -21,10 +23,12 @@ import Json.Decode.Pipeline as JsonPipeline
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import Random.Pcg
+import UrlParser
 
 
 type alias Model =
     { nextHiddenCardId : Int
+    , number : Int
     , cardContent : Content
     , hiddenCards : Array HiddenCard
     , draggedHiddenCard : Maybe (Drag HiddenCard)
@@ -83,6 +87,7 @@ decoder : Decoder Model
 decoder =
     JsonPipeline.decode Model
         |> JsonPipeline.required "nextHiddenCardId" Decode.int
+        |> JsonPipeline.required "number" Decode.int
         |> JsonPipeline.required "cardContent" cardContentDecoder
         |> JsonPipeline.required "hiddenCards" (Decode.array hiddenCardDecoder)
         |> JsonPipeline.hardcoded Nothing
@@ -116,6 +121,7 @@ encode : Model -> Encode.Value
 encode model =
     Encode.object
         [ ( "nextHiddenCardId", Encode.int model.nextHiddenCardId )
+        , ( "number", Encode.int model.number )
         , ( "cardContent", contentToString model.cardContent |> Encode.string )
         , ( "hiddenCards", Array.map encodeHiddenCard model.hiddenCards |> Encode.array )
         , ( "id", idToString model.id |> Encode.string )
@@ -141,11 +147,11 @@ idToString (CardId cardId) =
     Uuid.toString cardId
 
 
-createCardCommand : Content -> (Model -> msg) -> Cmd msg
-createCardCommand content event =
+createCardCommand : Int -> Content -> (Model -> msg) -> Cmd msg
+createCardCommand number content event =
     Random.Pcg.generate event
         (idGenerator
-            |> Random.Pcg.map (Model 1 content Array.empty Nothing)
+            |> Random.Pcg.map (Model 1 number content Array.empty Nothing)
         )
 
 
@@ -169,4 +175,17 @@ dragEndDecoder =
         (Decode.map2 Position
             (Decode.at [ "parentPosition", "x" ] Decode.int)
             (Decode.at [ "parentPosition", "y" ] Decode.int)
+        )
+
+
+idParser : UrlParser.Parser (CardId -> a) a
+idParser =
+    UrlParser.custom "CARD_ID"
+        (\idString ->
+            case Uuid.fromString idString of
+                Just cardUuid ->
+                    CardId cardUuid |> Ok
+
+                Nothing ->
+                    Err "Invalid Card ID"
         )
