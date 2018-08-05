@@ -1,7 +1,7 @@
 module Pages.Deck exposing (view, Config)
 
 import Array exposing (Array)
-import CardEditor.Card as Card
+import Data.Card as Card
 import Html exposing (Html, button, div, h2, span, text)
 import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)

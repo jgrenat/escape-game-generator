@@ -1,6 +1,6 @@
 module Route exposing (Route(..), route, href, newUrl, modifyUrl, fromLocation)
 
-import CardEditor.Card as Card
+import Data.Card as Card
 import Html.Attributes as Attributes
 import Html exposing (Attribute)
 import Navigation

@@ -1,4 +1,4 @@
-module CardEditor.Card
+module Data.Card
     exposing
         ( Model
         , CardId

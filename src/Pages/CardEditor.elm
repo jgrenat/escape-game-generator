@@ -12,7 +12,7 @@ port module Pages.CardEditor
 import Array exposing (Array)
 import Views.Cards.CardStyles as CardStyles
 import Views.Cards.StaticCard as CardView
-import CardEditor.Card as Card exposing (CardId, HiddenCard, contentToString, createCardCommand)
+import Data.Card as Card exposing (CardId, HiddenCard, contentToString, createCardCommand)
 import Html exposing (Attribute, Html, button, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
 import Html.Attributes exposing (contenteditable, for, id, name, src, step, style, type_, value)
 import Html.Events exposing (on, onClick, onInput)

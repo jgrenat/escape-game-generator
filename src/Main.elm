@@ -2,7 +2,7 @@ port module Main exposing (..)
 
 import Array exposing (Array)
 import Array.Extra
-import CardEditor.Card as Card exposing (Content(Content), createCardCommand, idToString)
+import Data.Card as Card exposing (Content(Content), createCardCommand, idToString)
 import Cmd.Extra
 import Html exposing (button, div, h1, text)
 import Json.Decode exposing (Value)

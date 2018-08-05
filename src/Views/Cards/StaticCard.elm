@@ -1,7 +1,7 @@
 module Views.Cards.StaticCard exposing (view, viewNumber)
 
 import Array exposing (Array)
-import CardEditor.Card as Card
+import Data.Card as Card
 import Html exposing (Attribute, Html, div, h1, img, small, span, text)
 import Html.Attributes exposing (src, style)
 import Tachyons exposing (classes)
