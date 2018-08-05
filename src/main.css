@@ -1,0 +1,12 @@
+.card .remove {
+    display: none;
+    z-index: 1;
+}
+
+.card:hover .remove {
+    display: inherit;
+}
+
+.card:hover .remove:hover {
+    background-color: white;
+}

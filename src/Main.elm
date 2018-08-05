@@ -58,6 +58,14 @@ init savedGame location =
                 ( model, Cmd.none )
 
 
+deckPageConfig : Pages.Deck.Config Msg
+deckPageConfig =
+    { createMsg = CreateCard
+    , onEditCard = EditCard
+    , onRemoveCard = RemoveCard
+    }
+
+
 newGameSet : ( Model, Cmd Msg )
 newGameSet =
     let
@@ -117,6 +125,7 @@ type Msg
     | EditCard Card.Model
     | SaveDeck
     | CreateCard
+    | RemoveCard Card.Model
     | CardCreated Card.Model
     | SetRoute (Maybe Route.Route)
 
@@ -170,6 +179,13 @@ update msg model =
                     createCardCommand (biggestCardNumber + 1) (Content "The content of the card goes here") CardCreated
             in
                 ( model, newCardCommand )
+
+        ( DeckPage, RemoveCard cardToRemove ) ->
+            let
+                newCards =
+                    Array.filter ((/=) cardToRemove) model.cards
+            in
+                ( { model | cards = newCards }, Cmd.none )
 
         ( DeckPage, CardCreated cardModel ) ->
             ( { model | cards = Array.push cardModel model.cards }, Cmd.none )
@@ -232,7 +248,7 @@ view model =
         , h1 [] [ text "Escape Game Generator" ]
         , case model.page of
             DeckPage ->
-                Pages.Deck.view CreateCard EditCard model.cards
+                Pages.Deck.view deckPageConfig model.cards
 
             CardEditorPage _ cardEditorPageModel ->
                 CardEditorPage.view cardEditorPageModel |> Html.map CardEditorPageMessage
