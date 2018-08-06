@@ -13,13 +13,14 @@ import Array exposing (Array)
 import Views.Cards.CardStyles as CardStyles
 import Views.Cards.StaticCard as CardView
 import Data.Card as Card exposing (CardId, HiddenCard, contentToString, createCardCommand)
-import Html exposing (Attribute, Html, button, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
+import Html exposing (Attribute, Html, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
 import Html.Attributes exposing (contenteditable, for, id, name, src, step, style, type_, value)
 import Html.Events exposing (on, onClick, onInput)
 import Json.Decode as Decode exposing (Decoder)
 import Mouse exposing (Position, position)
 import Tachyons exposing (classes, tachyons)
 import Tachyons.Classes exposing (absolute, b, b__black_10, b__black_20, ba, bg_gold, black_70, br2, br3, br4, br_100, cover, db, f2, f3, f4, f6, flex, flex_row, fw6, h2, hover_black, items_center, justify_center, left_0, left_1, lh_copy, mb2, measure, ml1, ml2, ml3, ml5, mt2, mt3, o_10, o_20, o_50, o_60, o_90, overflow_hidden, pa2, pa3, ph1, ph2, pt1, pv2, relative, right_0, serif, top_0, top_1, w2, w5, w_100, w_20, w_50, w_80, w_90, white, white_20, white_40, white_50, white_70)
+import Views.Utils.Forms as Forms
 
 
 type Event
@@ -405,11 +406,11 @@ viewCardController cardModel =
         [ cardContentTextarea (contentToString cardModel.cardContent)
         , div [] (Array.map viewHiddenCardForm cardModel.hiddenCards |> Array.toList)
         , div []
-            [ button [ type_ "button", onClick AddHiddenCard ] [ text "Add another hidden card" ]
+            [ Forms.secondaryButton [ onClick AddHiddenCard ] [ text "Add another hidden card" ]
             ]
         , div []
-            [ button [ type_ "button", onClick DiscardChanges ] [ text "Cancel changes" ]
-            , button [ type_ "button", onClick SaveChanges ] [ text "Save changes" ]
+            [ Forms.button [ type_ "button", onClick DiscardChanges ] [ text "Cancel changes" ]
+            , Forms.primaryButton [ type_ "button", onClick SaveChanges ] [ text "Save changes" ]
             ]
         ]
 
@@ -436,7 +437,7 @@ viewHiddenCardForm hiddenCard =
     in
         fieldset [ classes [ db, hover_black, w_100, ba, b__black_20, pa2, pt1, br2, mb2, mt3, relative ] ]
             [ legend [ classes [ ph1 ] ] [ text <| "Hidden Card " ++ stringId ]
-            , button [ classes [ absolute, top_0, right_0, db ], type_ "button", onClick (RemoveHiddenCard hiddenCard.id) ] [ text "X" ]
+            , Forms.button [ classes [ absolute, top_0, right_0, db ], onClick (RemoveHiddenCard hiddenCard.id) ] [ text "X" ]
             , div [ classes [ flex ] ]
                 [ div
                     [ classes [ mt3 ]
@@ -532,8 +533,8 @@ onMouseDown eventBuilder =
     Decode.map5
         Card.DragStartDetails
         position
-        (Decode.at [ "target", "parentElement", "offsetWidth" ] Decode.int)
-        (Decode.at [ "target", "parentElement", "offsetHeight" ] Decode.int)
+        (Decode.at [ "target", "parentElement", "offsetWidth" ] (Decode.map round Decode.float))
+        (Decode.at [ "target", "parentElement", "offsetHeight" ] (Decode.map round Decode.float))
         (Decode.field "layerX" Decode.int)
         (Decode.field "layerY" Decode.int)
         |> Decode.map eventBuilder

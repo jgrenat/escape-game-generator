@@ -169,12 +169,12 @@ dragEndDecoder : Decoder DragEndDetails
 dragEndDecoder =
     Decode.map2 DragEndDetails
         (Decode.map2 Position
-            (Decode.at [ "finalPosition", "x" ] Decode.int)
-            (Decode.at [ "finalPosition", "y" ] Decode.int)
+            (Decode.at [ "finalPosition", "x" ] (Decode.map round Decode.float))
+            (Decode.at [ "finalPosition", "y" ] (Decode.map round Decode.float))
         )
         (Decode.map2 Position
-            (Decode.at [ "parentPosition", "x" ] Decode.int)
-            (Decode.at [ "parentPosition", "y" ] Decode.int)
+            (Decode.at [ "parentPosition", "x" ] (Decode.map round Decode.float))
+            (Decode.at [ "parentPosition", "y" ] (Decode.map round Decode.float))
         )
 
 

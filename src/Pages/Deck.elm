@@ -9,6 +9,7 @@ import Html.Events.Extra exposing (onClickStopPropagation)
 import Tachyons exposing (classes)
 import Tachyons.Classes exposing (absolute, bg_white_40, bg_white_60, bg_white_70, bg_white_80, br1, f3, flex, flex_wrap, mb2, mr2, pa1, pa2, pointer, pr1, pt1, pv2, relative, right_0, right_1, top_0, top_1)
 import Views.Cards.StaticCard as CardView
+import Views.Utils.Forms as Forms
 
 
 type alias Config msg =
@@ -63,4 +64,4 @@ removeCross onRemoveCard =
 
 viewControls : msg -> Html.Html msg
 viewControls createMsg =
-    div [ classes [ pv2 ] ] [ button [ onClick createMsg ] [ text "Create a new card" ] ]
+    div [ classes [ pv2 ] ] [ Forms.primaryButton [ onClick createMsg ] [ text "Create a new card" ] ]

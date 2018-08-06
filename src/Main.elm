@@ -132,7 +132,7 @@ type Msg
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case ( model.page, msg ) of
+    case ( model.page, Debug.log "msg" msg ) of
         ( CardEditorPage cardModel cardEditorPageModel, CardEditorPageMessage cardMessage ) ->
             let
                 ( updatedModel, command, event ) =
