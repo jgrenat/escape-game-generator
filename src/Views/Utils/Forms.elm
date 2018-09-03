@@ -1,9 +1,9 @@
-module Views.Utils.Forms exposing (button, submitButton, primaryButton, secondaryButton)
+module Views.Utils.Forms exposing (button, primaryButton, secondaryButton, submitButton)
 
 import Html exposing (Html)
 import Html.Attributes exposing (type_)
-import Tachyons exposing (classes)
 import Tachyons.Classes exposing (bg_black, bg_dark_blue, bg_dark_green, bg_light_gray, dib, dim, f6, link, mb2, ph3, pointer, pv2, white)
+import Tachyons.Tachyons exposing (classes)
 
 
 button : List (Html.Attribute msg) -> List (Html msg) -> Html msg

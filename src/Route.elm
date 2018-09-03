@@ -1,10 +1,11 @@
-module Route exposing (Route(..), route, href, newUrl, modifyUrl, fromLocation)
+module Route exposing (Route(..), fromUrl, href, load, modifyUrl, newUrl, route)
 
+import Browser.Navigation as Navigation exposing (Key)
 import Data.Card as Card
-import Html.Attributes as Attributes
 import Html exposing (Attribute)
-import Navigation
-import UrlParser as Url exposing ((</>), Parser, s)
+import Html.Attributes as Attributes
+import Url
+import Url.Parser as UrlParser exposing ((</>), Parser, s)
 
 
 type Route
@@ -15,10 +16,10 @@ type Route
 
 route : Parser (Route -> a) a
 route =
-    Url.oneOf
-        [ Url.map Home (s "")
-        , Url.map DeckCard (s "deck" </> Url.string </> s "cards" </> Card.idParser)
-        , Url.map Deck (s "deck" </> Url.string)
+    UrlParser.oneOf
+        [ UrlParser.map Home (s "/")
+        , UrlParser.map DeckCard (s "deck" </> UrlParser.string </> s "cards" </> Card.idParser)
+        , UrlParser.map Deck (s "deck" </> UrlParser.string)
         ]
 
 
@@ -36,27 +37,35 @@ routeToString page =
                 Deck deckId ->
                     [ "deck", deckId ]
     in
-        "#/" ++ String.join "/" pieces
+    "#/" ++ String.join "/" pieces
 
 
 href : Route -> Attribute msg
-href route =
-    Attributes.href (routeToString route)
+href linkRoute =
+    Attributes.href (routeToString linkRoute)
 
 
-modifyUrl : Route -> Cmd msg
-modifyUrl =
-    routeToString >> Navigation.modifyUrl
+modifyUrl : Key -> Route -> Cmd msg
+modifyUrl key =
+    routeToString >> Navigation.replaceUrl key
 
 
-newUrl : Route -> Cmd msg
-newUrl =
-    routeToString >> Navigation.newUrl
+newUrl : Key -> Route -> Cmd msg
+newUrl key routeToTransform =
+    Debug.log "route" (routeToString routeToTransform)
+        |> Navigation.pushUrl key
 
 
-fromLocation : Navigation.Location -> Maybe Route
-fromLocation location =
-    if String.isEmpty location.hash then
-        Just Home
-    else
-        Url.parseHash route location
+load : String -> Cmd msg
+load url =
+    Navigation.load url
+
+
+fromUrl : Url.Url -> Maybe Route
+fromUrl url =
+    let
+        test =
+            Debug.log "test" url
+    in
+    { url | path = Maybe.withDefault "" url.fragment, fragment = Nothing }
+        |> UrlParser.parse route

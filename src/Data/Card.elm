@@ -1,29 +1,29 @@
-module Data.Card
-    exposing
-        ( Model
-        , CardId
-        , Content(Content)
-        , HiddenCard
-        , DragStartDetails
-        , DragEndDetails
-        , Drag
-        , decoder
-        , encode
-        , dragEndDecoder
-        , contentToString
-        , createCardCommand
-        , idParser
-        , idToString
-        )
+module Data.Card exposing
+    ( CardId
+    , Content(..)
+    , Drag
+    , DragEndDetails
+    , DragStartDetails
+    , HiddenCard
+    , Model
+    , contentToString
+    , createCardCommand
+    , decoder
+    , dragEndDecoder
+    , encode
+    , idParser
+    , idToString
+    )
 
-import Mouse exposing (Position)
 import Array exposing (Array)
-import Uuid
-import Json.Decode.Pipeline as JsonPipeline
+import Data.Position exposing (Position)
 import Json.Decode as Decode exposing (Decoder)
+import Json.Decode.Pipeline as JsonPipeline
 import Json.Encode as Encode
-import Random.Pcg
-import UrlParser
+import Random
+import Random.Char
+import Random.String
+import Url.Parser
 
 
 type alias Model =
@@ -37,7 +37,7 @@ type alias Model =
 
 
 type CardId
-    = CardId Uuid.Uuid
+    = CardId String
 
 
 type Content
@@ -85,7 +85,7 @@ type alias Drag a =
 
 decoder : Decoder Model
 decoder =
-    JsonPipeline.decode Model
+    Decode.succeed Model
         |> JsonPipeline.required "nextHiddenCardId" Decode.int
         |> JsonPipeline.required "number" Decode.int
         |> JsonPipeline.required "cardContent" cardContentDecoder
@@ -101,7 +101,7 @@ cardContentDecoder =
 
 hiddenCardDecoder : Decoder HiddenCard
 hiddenCardDecoder =
-    JsonPipeline.decode HiddenCard
+    Decode.succeed HiddenCard
         |> JsonPipeline.required "id" Decode.int
         |> JsonPipeline.required "number" Decode.int
         |> JsonPipeline.required "color" Decode.string
@@ -114,7 +114,7 @@ hiddenCardDecoder =
 
 cardIdDecoder : Decoder CardId
 cardIdDecoder =
-    Uuid.decoder |> Decode.map CardId
+    Decode.string |> Decode.map CardId
 
 
 encode : Model -> Encode.Value
@@ -123,7 +123,7 @@ encode model =
         [ ( "nextHiddenCardId", Encode.int model.nextHiddenCardId )
         , ( "number", Encode.int model.number )
         , ( "cardContent", contentToString model.cardContent |> Encode.string )
-        , ( "hiddenCards", Array.map encodeHiddenCard model.hiddenCards |> Encode.array )
+        , ( "hiddenCards", Encode.array encodeHiddenCard model.hiddenCards )
         , ( "id", idToString model.id |> Encode.string )
         ]
 
@@ -144,20 +144,39 @@ encodeHiddenCard hiddenCard =
 
 idToString : CardId -> String
 idToString (CardId cardId) =
-    Uuid.toString cardId
+    cardId
 
 
 createCardCommand : Int -> Content -> (Model -> msg) -> Cmd msg
 createCardCommand number content event =
-    Random.Pcg.generate event
+    Random.generate event
         (idGenerator
-            |> Random.Pcg.map (Model 1 number content Array.empty Nothing)
+            |> Random.map (Model 1 number content Array.empty Nothing)
         )
 
 
-idGenerator : Random.Pcg.Generator CardId
+idGenerator : Random.Generator CardId
 idGenerator =
-    Uuid.uuidGenerator |> Random.Pcg.map CardId
+    Random.String.string 36 randomCharGenerator |> Random.map CardId
+
+
+randomCharGenerator : Random.Generator Char
+randomCharGenerator =
+    Random.weighted ( 0.01, Random.constant '-' )
+        [ ( 0.495, randomNumber )
+        , ( 0.495, randomLowercaseLetter )
+        ]
+        |> Random.andThen identity
+
+
+randomNumber : Random.Generator Char
+randomNumber =
+    Random.Char.char 48 57
+
+
+randomLowercaseLetter : Random.Generator Char
+randomLowercaseLetter =
+    Random.Char.char 97 122
 
 
 contentToString : Content -> String
@@ -178,14 +197,6 @@ dragEndDecoder =
         )
 
 
-idParser : UrlParser.Parser (CardId -> a) a
+idParser : Url.Parser.Parser (CardId -> a) a
 idParser =
-    UrlParser.custom "CARD_ID"
-        (\idString ->
-            case Uuid.fromString idString of
-                Just cardUuid ->
-                    CardId cardUuid |> Ok
-
-                Nothing ->
-                    Err "Invalid Card ID"
-        )
+    Url.Parser.string |> Url.Parser.map CardId

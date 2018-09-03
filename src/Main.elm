@@ -1,19 +1,20 @@
-port module Main exposing (..)
+port module Main exposing (Model, Msg(..), Page(..), SaveOption(..), autoSaveDecoder, cardsArrayDecoder, deckPageConfig, encodeAutoSave, encodeModel, findIndexForCard, init, main, modelDecoder, newGameSet, replaceCardInArray, sendToSaveModule, setRoute, subscriptions, toSaveModule, update, view)
 
 import Array exposing (Array)
-import Array.Extra
-import Data.Card as Card exposing (Content(Content), createCardCommand, idToString)
+import Browser
+import Browser.Navigation as Navigation exposing (Key)
 import Cmd.Extra
+import Data.Card as Card exposing (Content(..), createCardCommand, idToString)
 import Html exposing (button, div, h1, text)
-import Json.Decode exposing (Value)
+import Json.Decode as Decode exposing (Value)
 import Json.Decode.Pipeline as JsonPipeline
 import Json.Encode
-import Navigation
 import Pages.CardEditor as CardEditorPage
 import Pages.Deck
 import Route
-import Tachyons exposing (classes, tachyons)
+import Tachyons.Tachyons exposing (classes, tachyons)
 import Time
+import Url exposing (Url)
 
 
 type Page
@@ -23,39 +24,41 @@ type Page
 
 main : Program String Model Msg
 main =
-    Navigation.programWithFlags (Route.fromLocation >> SetRoute)
+    Browser.application
         { init = init
         , view = view
         , update = update
         , subscriptions = subscriptions
+        , onUrlRequest = UrlRequest
+        , onUrlChange = Route.fromUrl >> SetRoute
         }
 
 
-init : String -> Navigation.Location -> ( Model, Cmd Msg )
-init savedGame location =
+init : String -> Url -> Key -> ( Model, Cmd Msg )
+init savedGame url key =
     let
         decodedModelResult =
-            Json.Decode.decodeString modelDecoder savedGame
+            Decode.decodeString (modelDecoder key) savedGame
 
         ( model, initialCommand ) =
             case decodedModelResult of
-                Ok model ->
-                    ( model, Cmd.none )
+                Ok decodedModel ->
+                    ( decodedModel, Cmd.none )
 
                 Err _ ->
-                    newGameSet
+                    newGameSet key
     in
-        case Route.fromLocation location of
-            Just (Route.DeckCard _ cardId) ->
-                Array.filter (\card -> card.id == cardId) model.cards
-                    |> Array.get 0
-                    |> Maybe.map (\card -> CardEditorPage card (CardEditorPage.init card))
-                    |> Maybe.map (\cardPage -> { model | page = cardPage })
-                    |> Maybe.withDefault model
-                    |> Cmd.Extra.withNoCmd
+    case Route.fromUrl url of
+        Just (Route.DeckCard _ cardId) ->
+            Array.filter (\card -> card.id == cardId) model.cards
+                |> Array.get 0
+                |> Maybe.map (\card -> CardEditorPage card (CardEditorPage.init card))
+                |> Maybe.map (\cardPage -> { model | page = cardPage })
+                |> Maybe.withDefault model
+                |> Cmd.Extra.withNoCmd
 
-            _ ->
-                ( model, Cmd.none )
+        _ ->
+            ( model, Cmd.none )
 
 
 deckPageConfig : Pages.Deck.Config Msg
@@ -66,13 +69,13 @@ deckPageConfig =
     }
 
 
-newGameSet : ( Model, Cmd Msg )
-newGameSet =
+newGameSet : Key -> ( Model, Cmd Msg )
+newGameSet key =
     let
         cardCommand =
             createCardCommand 15 (Content "Random content") CardCreated
     in
-        ( Model Array.empty DeckPage AutoSave, cardCommand )
+    ( Model Array.empty DeckPage AutoSave key, cardCommand )
 
 
 
@@ -83,6 +86,7 @@ type alias Model =
     { cards : Array Card.Model
     , page : Page
     , saveOption : SaveOption
+    , navigationKey : Key
     }
 
 
@@ -91,26 +95,28 @@ type SaveOption
     | ManualOnly
 
 
-modelDecoder : Json.Decode.Decoder Model
-modelDecoder =
-    JsonPipeline.decode Model
+modelDecoder : Key -> Decode.Decoder Model
+modelDecoder key =
+    Decode.succeed Model
         |> JsonPipeline.required "cards" cardsArrayDecoder
         |> JsonPipeline.hardcoded DeckPage
         |> JsonPipeline.required "autosave" autoSaveDecoder
+        |> JsonPipeline.hardcoded key
 
 
-cardsArrayDecoder : Json.Decode.Decoder (Array Card.Model)
+cardsArrayDecoder : Decode.Decoder (Array Card.Model)
 cardsArrayDecoder =
-    Json.Decode.array Card.decoder
+    Decode.array Card.decoder
 
 
-autoSaveDecoder : Json.Decode.Decoder SaveOption
+autoSaveDecoder : Decode.Decoder SaveOption
 autoSaveDecoder =
-    Json.Decode.bool
-        |> Json.Decode.map
+    Decode.bool
+        |> Decode.map
             (\isAutoSave ->
                 if isAutoSave then
                     AutoSave
+
                 else
                     ManualOnly
             )
@@ -121,13 +127,15 @@ autoSaveDecoder =
 
 
 type Msg
-    = CardEditorPageMessage CardEditorPage.Msg
+    = NoOp
+    | CardEditorPageMessage CardEditorPage.Msg
     | EditCard Card.Model
     | SaveDeck
     | CreateCard
     | RemoveCard Card.Model
     | CardCreated Card.Model
     | SetRoute (Maybe Route.Route)
+    | UrlRequest Browser.UrlRequest
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -146,23 +154,28 @@ update msg model =
                         _ ->
                             model.cards
 
-                newPage =
+                ( newPage, newPageCommand ) =
                     case event of
                         CardEditorPage.NoEvent ->
-                            CardEditorPage cardModel updatedModel
+                            ( CardEditorPage cardModel updatedModel, Cmd.none )
 
                         _ ->
-                            DeckPage
+                            ( DeckPage, Route.newUrl model.navigationKey Route.Home )
             in
-                ( { model | page = newPage, cards = updatedCards }, Cmd.map CardEditorPageMessage command )
+            ( { model | page = newPage, cards = updatedCards }
+            , Cmd.batch
+                [ Cmd.map CardEditorPageMessage command
+                , newPageCommand
+                ]
+            )
 
         ( DeckPage, EditCard card ) ->
             let
                 newUrlCmd =
                     Route.DeckCard "1" card.id
-                        |> Route.newUrl
+                        |> Route.newUrl model.navigationKey
             in
-                ( { model | page = CardEditorPage card (CardEditorPage.init card) }, newUrlCmd )
+            ( { model | page = CardEditorPage card (CardEditorPage.init card) }, newUrlCmd )
 
         ( _, SaveDeck ) ->
             ( model, sendToSaveModule model )
@@ -178,20 +191,37 @@ update msg model =
                 newCardCommand =
                     createCardCommand (biggestCardNumber + 1) (Content "The content of the card goes here") CardCreated
             in
-                ( model, newCardCommand )
+            ( model, newCardCommand )
 
         ( DeckPage, RemoveCard cardToRemove ) ->
             let
                 newCards =
                     Array.filter ((/=) cardToRemove) model.cards
             in
-                ( { model | cards = newCards }, Cmd.none )
+            ( { model | cards = newCards }, Cmd.none )
 
         ( DeckPage, CardCreated cardModel ) ->
             ( { model | cards = Array.push cardModel model.cards }, Cmd.none )
 
         ( _, SetRoute routeMaybe ) ->
             setRoute routeMaybe model
+
+        ( _, UrlRequest urlRequest ) ->
+            case urlRequest of
+                Browser.Internal url ->
+                    case url.fragment of
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                        Just _ ->
+                            ( model
+                            , Route.fromUrl url
+                                |> Maybe.map (Route.newUrl model.navigationKey)
+                                |> Maybe.withDefault Cmd.none
+                            )
+
+                Browser.External href ->
+                    ( model, Route.load href )
 
         _ ->
             ( model, Cmd.none )
@@ -214,20 +244,27 @@ setRoute routeMaybe model =
 
 replaceCardInArray : Card.Model -> Card.Model -> Array Card.Model -> Array Card.Model
 replaceCardInArray oldCard newCard cards =
-    findIndexForCard oldCard cards
-        |> Maybe.map (\id -> Array.Extra.update id (always newCard) cards)
-        |> Maybe.withDefault cards
+    Array.map
+        (\card ->
+            if card == oldCard then
+                newCard
+
+            else
+                card
+        )
+        cards
 
 
 findIndexForCard : Card.Model -> Array Card.Model -> Maybe Int
 findIndexForCard cardToFind cards =
-    Array.indexedMap (,) cards
+    Array.indexedMap (\a b -> ( a, b )) cards
         |> Array.foldl
             (\( id, card ) match ->
                 case match of
                     Nothing ->
                         if card == cardToFind then
                             Just id
+
                         else
                             Nothing
 
@@ -241,11 +278,15 @@ findIndexForCard cardToFind cards =
 -- VIEW
 
 
-view : Model -> Html.Html Msg
+view : Model -> Browser.Document Msg
 view model =
+    let
+        pageTitle =
+            "Escape Game Generator"
+    in
     div []
         [ tachyons.css
-        , h1 [] [ text "Escape Game Generator" ]
+        , h1 [] [ text pageTitle ]
         , case model.page of
             DeckPage ->
                 Pages.Deck.view deckPageConfig model.cards
@@ -253,6 +294,8 @@ view model =
             CardEditorPage _ cardEditorPageModel ->
                 CardEditorPage.view cardEditorPageModel |> Html.map CardEditorPageMessage
         ]
+        |> List.singleton
+        |> Browser.Document pageTitle
 
 
 
@@ -271,7 +314,7 @@ port toSaveModule : String -> Cmd msg
 encodeModel : Model -> Json.Encode.Value
 encodeModel model =
     Json.Encode.object
-        [ ( "cards", Array.map Card.encode model.cards |> Json.Encode.array )
+        [ ( "cards", Json.Encode.array Card.encode model.cards )
         , ( "autosave", encodeAutoSave model.saveOption )
         ]
 
@@ -297,7 +340,7 @@ subscriptions model =
     Sub.batch
         [ case model.saveOption of
             AutoSave ->
-                Time.every (30 * Time.second) (always SaveDeck)
+                Time.every (30 * 1000) (always SaveDeck)
 
             ManualOnly ->
                 Sub.none

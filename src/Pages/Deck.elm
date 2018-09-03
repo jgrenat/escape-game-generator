@@ -1,15 +1,30 @@
-module Pages.Deck exposing (view, Config)
+module Pages.Deck exposing (Config, view)
 
 import Array exposing (Array)
 import Data.Card as Card
 import Html exposing (Html, button, div, h2, span, text)
 import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)
-import Html.Events.Extra exposing (onClickStopPropagation)
-import Tachyons exposing (classes)
+import Json.Decode as Decode
 import Tachyons.Classes exposing (absolute, bg_white_40, bg_white_60, bg_white_70, bg_white_80, br1, f3, flex, flex_wrap, mb2, mr2, pa1, pa2, pointer, pr1, pt1, pv2, relative, right_0, right_1, top_0, top_1)
+import Tachyons.Tachyons exposing (classes)
 import Views.Cards.StaticCard as CardView
 import Views.Utils.Forms as Forms
+
+
+
+-- TODO Waiting for Html.Extra to be updated
+
+
+onClickStopPropagation : msg -> Html.Attribute msg
+onClickStopPropagation msg =
+    Html.Events.custom "click"
+        (Decode.succeed
+            { message = msg
+            , stopPropagation = True
+            , preventDefault = False
+            }
+        )
 
 
 type alias Config msg =
@@ -43,7 +58,7 @@ viewCards onEditCard onRemoveCard cards =
                         , "card"
                         , pointer
                         ]
-                    , style [ ( "zoom", "0.5" ) ]
+                    , style "zoom" "0.5"
                     , onClick (onEditCard card)
                     ]
                     [ cardHtml

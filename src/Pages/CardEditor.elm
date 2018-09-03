@@ -1,25 +1,25 @@
-port module Pages.CardEditor
-    exposing
-        ( Model
-        , update
-        , subscriptions
-        , view
-        , Msg
-        , Event(..)
-        , init
-        )
+port module Pages.CardEditor exposing
+    ( Event(..)
+    , Model
+    , Msg
+    , init
+    , subscriptions
+    , update
+    , view
+    )
 
 import Array exposing (Array)
-import Views.Cards.CardStyles as CardStyles
-import Views.Cards.StaticCard as CardView
+import Browser.Events
 import Data.Card as Card exposing (CardId, HiddenCard, contentToString, createCardCommand)
+import Data.Position as Position
 import Html exposing (Attribute, Html, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
 import Html.Attributes exposing (contenteditable, for, id, name, src, step, style, type_, value)
 import Html.Events exposing (on, onClick, onInput)
 import Json.Decode as Decode exposing (Decoder)
-import Mouse exposing (Position, position)
-import Tachyons exposing (classes, tachyons)
 import Tachyons.Classes exposing (absolute, b, b__black_10, b__black_20, ba, bg_gold, black_70, br2, br3, br4, br_100, cover, db, f2, f3, f4, f6, flex, flex_row, fw6, h2, hover_black, items_center, justify_center, left_0, left_1, lh_copy, mb2, measure, ml1, ml2, ml3, ml5, mt2, mt3, o_10, o_20, o_50, o_60, o_90, overflow_hidden, pa2, pa3, ph1, ph2, pt1, pv2, relative, right_0, serif, top_0, top_1, w2, w5, w_100, w_20, w_50, w_80, w_90, white, white_20, white_40, white_50, white_70)
+import Tachyons.Tachyons exposing (classes, tachyons)
+import Views.Cards.CardStyles as CardStyles exposing (toStyle)
+import Views.Cards.StaticCard as CardView
 import Views.Utils.Forms as Forms
 
 
@@ -59,6 +59,7 @@ defaultHiddenCard id =
 
 type FieldUpdate
     = CardContent String
+    | CardNumber String
     | HiddenCardNumber Int String
     | HiddenCardColor Int String
     | HiddenCardTop Int String
@@ -73,8 +74,8 @@ type Msg
     | AddHiddenCard
     | RemoveHiddenCard Int
     | DragStart HiddenCard Card.DragStartDetails
-    | DragAt Position
-    | DragEnd (Result String Card.DragEndDetails)
+    | DragAt Position.Position
+    | DragEnd (Result Decode.Error Card.DragEndDetails)
     | DiscardChanges
     | SaveChanges
 
@@ -85,177 +86,184 @@ update msg (Model model) =
         card =
             model.card
     in
-        case msg of
-            DragStart hiddenCard dragStartDetails ->
-                let
-                    drag =
-                        { element = hiddenCard
-                        , currentTopOffset = 0
-                        , currentLeftOffset = 0
-                        , initialPosition = dragStartDetails.initialPosition
-                        , parentWidth = dragStartDetails.parentWidth
-                        , parentHeight = dragStartDetails.parentHeight
-                        , layerX = dragStartDetails.layerX
-                        , layerY = dragStartDetails.layerY
-                        }
+    case msg of
+        DragStart hiddenCard dragStartDetails ->
+            let
+                drag =
+                    { element = hiddenCard
+                    , currentTopOffset = 0
+                    , currentLeftOffset = 0
+                    , initialPosition = dragStartDetails.initialPosition
+                    , parentWidth = dragStartDetails.parentWidth
+                    , parentHeight = dragStartDetails.parentHeight
+                    , layerX = dragStartDetails.layerX
+                    , layerY = dragStartDetails.layerY
+                    }
 
-                    updatedCard =
-                        { card | draggedHiddenCard = Just drag }
-                in
+                updatedCard =
+                    { card | draggedHiddenCard = Just drag }
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+
+        DragAt newPosition ->
+            case card.draggedHiddenCard of
+                Nothing ->
+                    ( Model model, Cmd.none, NoEvent )
+
+                Just dragDetails ->
+                    let
+                        offsetTop =
+                            newPosition.y - dragDetails.initialPosition.y
+
+                        offsetLeft =
+                            newPosition.x - dragDetails.initialPosition.x
+
+                        newDrag =
+                            { dragDetails | currentTopOffset = offsetTop, currentLeftOffset = offsetLeft }
+
+                        updatedCard =
+                            { card | draggedHiddenCard = Just newDrag }
+                    in
                     ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            DragAt newPosition ->
-                case card.draggedHiddenCard of
-                    Nothing ->
-                        ( Model model, Cmd.none, NoEvent )
+        DragEnd (Ok dragEndDetails) ->
+            case card.draggedHiddenCard of
+                Nothing ->
+                    ( Model model, Cmd.none, NoEvent )
 
-                    Just dragDetails ->
-                        let
-                            offsetTop =
-                                newPosition.y - dragDetails.initialPosition.y
+                Just draggedHiddenCard ->
+                    let
+                        newX =
+                            toFloat (dragEndDetails.finalPosition.x - dragEndDetails.parentPosition.x - draggedHiddenCard.layerX)
+                                / toFloat draggedHiddenCard.parentWidth
+                                * 100
+                                |> max 0
+                                |> min 95
 
-                            offsetLeft =
-                                newPosition.x - dragDetails.initialPosition.x
+                        newY =
+                            toFloat (dragEndDetails.finalPosition.y - dragEndDetails.parentPosition.y - draggedHiddenCard.layerY)
+                                / toFloat draggedHiddenCard.parentHeight
+                                * 100
+                                |> max 0
+                                |> min 95
 
-                            newDrag =
-                                { dragDetails | currentTopOffset = offsetTop, currentLeftOffset = offsetLeft }
+                        hiddenCards =
+                            updateIf
+                                (\hiddenCard -> hiddenCard.id == draggedHiddenCard.element.id)
+                                (\hiddenCard -> { hiddenCard | top = newY, left = newX })
+                                card.hiddenCards
 
-                            updatedCard =
-                                { card | draggedHiddenCard = Just newDrag }
-                        in
-                            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
-
-            DragEnd (Ok dragEndDetails) ->
-                case card.draggedHiddenCard of
-                    Nothing ->
-                        ( Model model, Cmd.none, NoEvent )
-
-                    Just draggedHiddenCard ->
-                        let
-                            newX =
-                                (toFloat (dragEndDetails.finalPosition.x - dragEndDetails.parentPosition.x - draggedHiddenCard.layerX))
-                                    / (toFloat draggedHiddenCard.parentWidth)
-                                    * 100
-                                    |> max 0
-                                    |> min 95
-
-                            newY =
-                                (toFloat (dragEndDetails.finalPosition.y - dragEndDetails.parentPosition.y - draggedHiddenCard.layerY))
-                                    / (toFloat draggedHiddenCard.parentHeight)
-                                    * 100
-                                    |> max 0
-                                    |> min 95
-
-                            hiddenCards =
-                                updateIf
-                                    (\hiddenCard -> hiddenCard.id == draggedHiddenCard.element.id)
-                                    (\hiddenCard -> { hiddenCard | top = newY, left = newX })
-                                    card.hiddenCards
-
-                            updatedCard =
-                                { card | draggedHiddenCard = Nothing, hiddenCards = hiddenCards }
-                        in
-                            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
-
-            DragEnd (Err _) ->
-                ( Model model, Cmd.none, NoEvent )
-
-            AddHiddenCard ->
-                let
-                    newHiddenCard =
-                        defaultHiddenCard card.nextHiddenCardId
-
-                    newHiddenCardArray =
-                        Array.push newHiddenCard card.hiddenCards
-
-                    updatedCard =
-                        { card | hiddenCards = newHiddenCardArray, nextHiddenCardId = card.nextHiddenCardId + 1 }
-                in
+                        updatedCard =
+                            { card | draggedHiddenCard = Nothing, hiddenCards = hiddenCards }
+                    in
                     ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            RemoveHiddenCard id ->
-                let
-                    newHiddenCardsArray =
-                        Array.filter (\hiddenCard -> hiddenCard.id /= id) card.hiddenCards
+        DragEnd (Err _) ->
+            ( Model model, Cmd.none, NoEvent )
 
-                    updatedCard =
-                        { card | hiddenCards = newHiddenCardsArray }
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+        AddHiddenCard ->
+            let
+                newHiddenCard =
+                    defaultHiddenCard card.nextHiddenCardId
 
-            UpdateField (CardContent newContent) ->
-                let
-                    updatedCard =
-                        { card | cardContent = Card.Content newContent }
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+                newHiddenCardArray =
+                    Array.push newHiddenCard card.hiddenCards
 
-            UpdateField (HiddenCardColor id newColor) ->
-                let
-                    updatedCard =
-                        updateHiddenCard card id (\hiddenCard -> { hiddenCard | color = newColor })
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+                updatedCard =
+                    { card | hiddenCards = newHiddenCardArray, nextHiddenCardId = card.nextHiddenCardId + 1 }
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            UpdateField (HiddenCardNumber id newNumber) ->
-                let
-                    updatedCard =
-                        updateHiddenCard card
-                            id
-                            (\hiddenCard -> { hiddenCard | number = String.toInt newNumber |> Result.withDefault hiddenCard.number })
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+        RemoveHiddenCard id ->
+            let
+                newHiddenCardsArray =
+                    Array.filter (\hiddenCard -> hiddenCard.id /= id) card.hiddenCards
 
-            UpdateField (HiddenCardTop id newValue) ->
-                let
-                    updatedCard =
-                        updateHiddenCard card
-                            id
-                            (\hiddenCard -> { hiddenCard | top = String.toFloat newValue |> Result.withDefault hiddenCard.top })
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+                updatedCard =
+                    { card | hiddenCards = newHiddenCardsArray }
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            UpdateField (HiddenCardOpacity id newValue) ->
-                let
-                    updatedCard =
-                        updateHiddenCard card
-                            id
-                            (\hiddenCard -> { hiddenCard | opacity = String.toFloat newValue |> Result.withDefault hiddenCard.opacity })
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+        UpdateField (CardNumber newNumber) ->
+            let
+                updatedCard =
+                    { card | number = String.toInt newNumber |> Maybe.withDefault card.number }
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            UpdateField (HiddenCardSize id newValue) ->
-                let
-                    updatedCard =
-                        updateHiddenCard card
-                            id
-                            (\hiddenCard -> { hiddenCard | sizeInEm = String.toFloat newValue |> Result.withDefault hiddenCard.sizeInEm })
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+        UpdateField (CardContent newContent) ->
+            let
+                updatedCard =
+                    { card | cardContent = Card.Content newContent }
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            UpdateField (HiddenCardRotation id newValue) ->
-                let
-                    updatedCard =
-                        updateHiddenCard card
-                            id
-                            (\hiddenCard -> { hiddenCard | rotation = String.toFloat newValue |> Result.withDefault hiddenCard.rotation })
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+        UpdateField (HiddenCardColor id newColor) ->
+            let
+                updatedCard =
+                    updateHiddenCard card id (\hiddenCard -> { hiddenCard | color = newColor })
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            UpdateField (HiddenCardLeft id newValue) ->
-                let
-                    updatedCard =
-                        updateHiddenCard card
-                            id
-                            (\hiddenCard -> { hiddenCard | left = String.toFloat newValue |> Result.withDefault hiddenCard.left })
-                in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+        UpdateField (HiddenCardNumber id newNumber) ->
+            let
+                updatedCard =
+                    updateHiddenCard card
+                        id
+                        (\hiddenCard -> { hiddenCard | number = String.toInt newNumber |> Maybe.withDefault hiddenCard.number })
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            DiscardChanges ->
-                ( Model model, Cmd.none, Discard )
+        UpdateField (HiddenCardTop id newValue) ->
+            let
+                updatedCard =
+                    updateHiddenCard card
+                        id
+                        (\hiddenCard -> { hiddenCard | top = String.toFloat newValue |> Maybe.withDefault hiddenCard.top })
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
-            SaveChanges ->
-                ( Model model, Cmd.none, Save card )
+        UpdateField (HiddenCardOpacity id newValue) ->
+            let
+                updatedCard =
+                    updateHiddenCard card
+                        id
+                        (\hiddenCard -> { hiddenCard | opacity = String.toFloat newValue |> Maybe.withDefault hiddenCard.opacity })
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+
+        UpdateField (HiddenCardSize id newValue) ->
+            let
+                updatedCard =
+                    updateHiddenCard card
+                        id
+                        (\hiddenCard -> { hiddenCard | sizeInEm = String.toFloat newValue |> Maybe.withDefault hiddenCard.sizeInEm })
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+
+        UpdateField (HiddenCardRotation id newValue) ->
+            let
+                updatedCard =
+                    updateHiddenCard card
+                        id
+                        (\hiddenCard -> { hiddenCard | rotation = String.toFloat newValue |> Maybe.withDefault hiddenCard.rotation })
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+
+        UpdateField (HiddenCardLeft id newValue) ->
+            let
+                updatedCard =
+                    updateHiddenCard card
+                        id
+                        (\hiddenCard -> { hiddenCard | left = String.toFloat newValue |> Maybe.withDefault hiddenCard.left })
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+
+        DiscardChanges ->
+            ( Model model, Cmd.none, Discard )
+
+        SaveChanges ->
+            ( Model model, Cmd.none, Save card )
 
 
 updateHiddenCard : Card.Model -> Int -> (HiddenCard -> HiddenCard) -> Card.Model
@@ -267,7 +275,7 @@ updateHiddenCard cardModel hiddenCardId updateFunction =
                 updateFunction
                 cardModel.hiddenCards
     in
-        ({ cardModel | hiddenCards = newHiddenCards })
+    { cardModel | hiddenCards = newHiddenCards }
 
 
 updateIf : (a -> Bool) -> (a -> a) -> Array a -> Array a
@@ -276,6 +284,7 @@ updateIf filter transform elements =
         (\element ->
             if filter element then
                 transform element
+
             else
                 element
         )
@@ -293,7 +302,7 @@ subscriptions (Model { card }) =
             Sub.none
 
         Just _ ->
-            Sub.batch [ Mouse.moves DragAt, mouseUp (Decode.decodeValue Card.dragEndDecoder >> DragEnd) ]
+            Sub.batch [ Browser.Events.onMouseMove (Position.decoder |> Decode.map DragAt), mouseUp (Decode.decodeValue Card.dragEndDecoder >> DragEnd) ]
 
 
 port mouseUp : (Decode.Value -> msg) -> Sub msg
@@ -306,7 +315,7 @@ port mouseUp : (Decode.Value -> msg) -> Sub msg
 view : Model -> Html Msg
 view (Model { card }) =
     div
-        [ style [ ( "margin-left", "50px" ) ]
+        [ style "margin-left" "50px"
         , classes [ flex, flex_row ]
         ]
         [ tachyons.css
@@ -318,7 +327,7 @@ view (Model { card }) =
 viewCard : Card.Model -> Html Msg
 viewCard cardModel =
     div
-        [ style (CardStyles.cardStyles "300px" "600px"), classes CardStyles.cardClasses ]
+        (classes CardStyles.cardClasses :: toStyle (CardStyles.cardStyles "300px" "600px"))
         [ viewIllustration cardModel.draggedHiddenCard cardModel.hiddenCards
         , viewCardContent cardModel
         , CardView.viewNumber cardModel.number
@@ -328,12 +337,10 @@ viewCard cardModel =
 viewIllustration : Maybe (Card.Drag HiddenCard) -> Array HiddenCard -> Html Msg
 viewIllustration maybeDraggedHiddenCard hiddenCards =
     div
-        [ style
-            [ ( "width", "100%" )
-            , ( "height", "60%" )
-            , ( "background-image", "url('/assorted-business-cabinet-327173.jpg')" )
-            , ( "border-bottom", "1px solid black" )
-            ]
+        [ style "width" "100%"
+        , style "height" "60%"
+        , style "background-image" "url('/assorted-business-cabinet-327173.jpg')"
+        , style "border-bottom" "1px solid black"
         , id "js-area"
         , classes [ absolute, cover ]
         ]
@@ -343,9 +350,7 @@ viewIllustration maybeDraggedHiddenCard hiddenCards =
 viewCardContent : Card.Model -> Html Msg
 viewCardContent model =
     div
-        [ style CardStyles.contentStyles
-        , classes CardStyles.contentClasses
-        ]
+        ([ classes CardStyles.contentClasses ] ++ toStyle CardStyles.contentStyles)
         [ div
             [ contenteditable True
             , on "blur" (Decode.map (CardContent >> UpdateField) targetTextContent)
@@ -370,40 +375,42 @@ viewHiddenCard maybeHiddenCard hiddenCard =
                 Just draggedHiddenCard ->
                     if draggedHiddenCard.element.id /= hiddenCard.id then
                         []
+
                     else
                         let
                             translateX =
-                                "translateX(" ++ (toString draggedHiddenCard.currentLeftOffset) ++ "px)"
+                                "translateX(" ++ String.fromInt draggedHiddenCard.currentLeftOffset ++ "px)"
 
                             translateY =
-                                "translateY(" ++ (toString draggedHiddenCard.currentTopOffset) ++ "px)"
+                                "translateY(" ++ String.fromInt draggedHiddenCard.currentTopOffset ++ "px)"
 
                             rotate =
-                                "rotate(" ++ (toString draggedHiddenCard.element.rotation) ++ "deg)"
+                                "rotate(" ++ String.fromFloat draggedHiddenCard.element.rotation ++ "deg)"
                         in
-                            [ ( "transform", translateX ++ " " ++ translateY ++ " " ++ rotate ) ]
+                        [ ( "transform", translateX ++ " " ++ translateY ++ " " ++ rotate ) ]
     in
-        div
-            [ classes [ absolute, f4, o_10, b ]
-            , style (( "cursor", "move" ) :: CardStyles.hiddenCardStyles hiddenCard ++ transformStyles)
-            , onMouseDown (DragStart hiddenCard)
-            ]
-            [ text (toString hiddenCard.number) ]
+    div
+        ([ classes [ absolute, f4, o_10, b ]
+         , onMouseDown (DragStart hiddenCard)
+         ]
+            ++ (style "cursor" "move" :: toStyle (CardStyles.hiddenCardStyles hiddenCard))
+            ++ toStyle transformStyles
+        )
+        [ text (String.fromInt hiddenCard.number) ]
 
 
 viewStaticHiddenCard : HiddenCard -> Html msg
 viewStaticHiddenCard hiddenCard =
     div
-        [ classes [ absolute, f4, o_10, b ]
-        , CardStyles.hiddenCardStyles hiddenCard |> style
-        ]
-        [ text (toString hiddenCard.number) ]
+        ([ classes [ absolute, f4, o_10, b ] ] ++ toStyle (CardStyles.hiddenCardStyles hiddenCard))
+        [ text (String.fromInt hiddenCard.number) ]
 
 
 viewCardController : Card.Model -> Html Msg
 viewCardController cardModel =
-    form [ style [ ( "width", "300px" ) ], classes [ ml5 ] ]
-        [ cardContentTextarea (contentToString cardModel.cardContent)
+    form [ style "width" "300px", classes [ ml5 ] ]
+        [ cardNumberInput cardModel.number
+        , cardContentTextarea (contentToString cardModel.cardContent)
         , div [] (Array.map viewHiddenCardForm cardModel.hiddenCards |> Array.toList)
         , div []
             [ Forms.secondaryButton [ onClick AddHiddenCard ] [ text "Add another hidden card" ]
@@ -412,6 +419,23 @@ viewCardController cardModel =
             [ Forms.button [ type_ "button", onClick DiscardChanges ] [ text "Cancel changes" ]
             , Forms.primaryButton [ type_ "button", onClick SaveChanges ] [ text "Save changes" ]
             ]
+        ]
+
+
+cardNumberInput : Int -> Html Msg
+cardNumberInput number =
+    div [ classes [ mt3 ] ]
+        [ label [ for "numberInput", classes [ f6, db, mb2 ] ] [ text "Card number" ]
+        , input
+            [ id "numberInput"
+            , name "numberInput"
+            , type_ "number"
+            , step "1"
+            , value (String.fromInt number)
+            , onInput (CardNumber >> UpdateField)
+            , classes [ db, hover_black, w_100, measure, ba, b__black_20, pa2, br2, mb2 ]
+            ]
+            []
         ]
 
 
@@ -433,106 +457,106 @@ viewHiddenCardForm : HiddenCard -> Html Msg
 viewHiddenCardForm hiddenCard =
     let
         stringId =
-            toString hiddenCard.id
+            String.fromInt hiddenCard.id
     in
-        fieldset [ classes [ db, hover_black, w_100, ba, b__black_20, pa2, pt1, br2, mb2, mt3, relative ] ]
-            [ legend [ classes [ ph1 ] ] [ text <| "Hidden Card " ++ stringId ]
-            , Forms.button [ classes [ absolute, top_0, right_0, db ], onClick (RemoveHiddenCard hiddenCard.id) ] [ text "X" ]
-            , div [ classes [ flex ] ]
-                [ div
-                    [ classes [ mt3 ]
-                    ]
-                    [ label [ for <| "hiddenCardNumberInput" ++ stringId, classes [ f6, db, mb2 ] ] [ text "Card number" ]
-                    , input
-                        [ id <| "hiddenCardNumberInput" ++ stringId
-                        , name <| "hiddenCardNumberInput" ++ stringId
-                        , type_ "number"
-                        , value (toString hiddenCard.number)
-                        , onInput (HiddenCardNumber hiddenCard.id >> UpdateField)
-                        , classes [ db, hover_black, w_100, measure, ba, b__black_20, pa2, br2, mb2 ]
-                        ]
-                        []
-                    ]
-                , div
-                    [ classes [ mt3, ml5, w_50 ]
-                    ]
-                    [ label [ for <| "hiddenCardSizeInput" ++ stringId, classes [ f6, db, mb2 ] ]
-                        [ text "Size" ]
-                    , input
-                        [ id <| "hiddenCardSizeInput" ++ stringId
-                        , name <| "hiddenCardSizeInput" ++ stringId
-                        , type_ "range"
-                        , Html.Attributes.min "0"
-                        , Html.Attributes.max "5"
-                        , Html.Attributes.step "0.1"
-                        , value <| toString hiddenCard.sizeInEm
-                        , onInput (HiddenCardSize hiddenCard.id >> UpdateField)
-                        , classes [ db, hover_black, measure, pv2, br2, mb2, w_80 ]
-                        ]
-                        []
-                    ]
+    fieldset [ classes [ db, hover_black, w_100, ba, b__black_20, pa2, pt1, br2, mb2, mt3, relative ] ]
+        [ legend [ classes [ ph1 ] ] [ text <| "Hidden Card " ++ stringId ]
+        , Forms.button [ classes [ absolute, top_0, right_0, db ], onClick (RemoveHiddenCard hiddenCard.id) ] [ text "X" ]
+        , div [ classes [ flex ] ]
+            [ div
+                [ classes [ mt3 ]
                 ]
-            , div [ classes [ flex ] ]
-                [ div
-                    [ classes [ mt3, w_50 ]
+                [ label [ for <| "hiddenCardNumberInput" ++ stringId, classes [ f6, db, mb2 ] ] [ text "Card number" ]
+                , input
+                    [ id <| "hiddenCardNumberInput" ++ stringId
+                    , name <| "hiddenCardNumberInput" ++ stringId
+                    , type_ "number"
+                    , value (String.fromInt hiddenCard.number)
+                    , onInput (HiddenCardNumber hiddenCard.id >> UpdateField)
+                    , classes [ db, hover_black, w_100, measure, ba, b__black_20, pa2, br2, mb2 ]
                     ]
-                    [ label [ for <| "hiddenCardColorInput" ++ stringId, classes [ f6, db, mb2 ] ]
-                        [ text "Text color" ]
-                    , input
-                        [ id <| "hiddenCardColorInput" ++ stringId
-                        , name <| "hiddenCardColorInput" ++ stringId
-                        , type_ "color"
-                        , value hiddenCard.color
-                        , onInput (HiddenCardColor hiddenCard.id >> UpdateField)
-                        , classes [ db, hover_black, measure, br2, mb2 ]
-                        ]
-                        []
+                    []
+                ]
+            , div
+                [ classes [ mt3, ml5, w_50 ]
+                ]
+                [ label [ for <| "hiddenCardSizeInput" ++ stringId, classes [ f6, db, mb2 ] ]
+                    [ text "Size" ]
+                , input
+                    [ id <| "hiddenCardSizeInput" ++ stringId
+                    , name <| "hiddenCardSizeInput" ++ stringId
+                    , type_ "range"
+                    , Html.Attributes.min "0"
+                    , Html.Attributes.max "5"
+                    , Html.Attributes.step "0.1"
+                    , value <| String.fromFloat hiddenCard.sizeInEm
+                    , onInput (HiddenCardSize hiddenCard.id >> UpdateField)
+                    , classes [ db, hover_black, measure, pv2, br2, mb2, w_80 ]
                     ]
-                , div
-                    [ classes [ mt3, w_50 ]
-                    ]
-                    [ label [ for <| "hiddenCardRotationInput" ++ stringId, classes [ f6, db, mb2 ] ]
-                        [ text "Rotation" ]
-                    , input
-                        [ id <| "hiddenCardRotationInput" ++ stringId
-                        , name <| "hiddenCardRotationInput" ++ stringId
-                        , type_ "number"
-                        , Html.Attributes.min "-360"
-                        , Html.Attributes.max "360"
-                        , step "5"
-                        , value (toString hiddenCard.rotation)
-                        , onInput (HiddenCardRotation hiddenCard.id >> UpdateField)
-                        , classes [ db, hover_black, measure, br2, mb2 ]
-                        ]
-                        []
-                    ]
-                , div
-                    [ classes [ mt3, w_50 ]
-                    ]
-                    [ label [ for <| "hiddenCardOpacityInput" ++ stringId, classes [ f6, db, mb2 ] ]
-                        [ text "Opacity" ]
-                    , input
-                        [ id <| "hiddenCardOpacityInput" ++ stringId
-                        , name <| "hiddenCardOpacityInput" ++ stringId
-                        , type_ "range"
-                        , Html.Attributes.min "0"
-                        , Html.Attributes.max "1"
-                        , Html.Attributes.step "0.1"
-                        , value <| toString hiddenCard.opacity
-                        , onInput (HiddenCardOpacity hiddenCard.id >> UpdateField)
-                        , classes [ db, hover_black, measure, pv2, br2, mb2, w_80 ]
-                        ]
-                        []
-                    ]
+                    []
                 ]
             ]
+        , div [ classes [ flex ] ]
+            [ div
+                [ classes [ mt3, w_50 ]
+                ]
+                [ label [ for <| "hiddenCardColorInput" ++ stringId, classes [ f6, db, mb2 ] ]
+                    [ text "Text color" ]
+                , input
+                    [ id <| "hiddenCardColorInput" ++ stringId
+                    , name <| "hiddenCardColorInput" ++ stringId
+                    , type_ "color"
+                    , value hiddenCard.color
+                    , onInput (HiddenCardColor hiddenCard.id >> UpdateField)
+                    , classes [ db, hover_black, measure, br2, mb2 ]
+                    ]
+                    []
+                ]
+            , div
+                [ classes [ mt3, w_50 ]
+                ]
+                [ label [ for <| "hiddenCardRotationInput" ++ stringId, classes [ f6, db, mb2 ] ]
+                    [ text "Rotation" ]
+                , input
+                    [ id <| "hiddenCardRotationInput" ++ stringId
+                    , name <| "hiddenCardRotationInput" ++ stringId
+                    , type_ "number"
+                    , Html.Attributes.min "-360"
+                    , Html.Attributes.max "360"
+                    , step "5"
+                    , value (String.fromFloat hiddenCard.rotation)
+                    , onInput (HiddenCardRotation hiddenCard.id >> UpdateField)
+                    , classes [ db, hover_black, measure, br2, mb2 ]
+                    ]
+                    []
+                ]
+            , div
+                [ classes [ mt3, w_50 ]
+                ]
+                [ label [ for <| "hiddenCardOpacityInput" ++ stringId, classes [ f6, db, mb2 ] ]
+                    [ text "Opacity" ]
+                , input
+                    [ id <| "hiddenCardOpacityInput" ++ stringId
+                    , name <| "hiddenCardOpacityInput" ++ stringId
+                    , type_ "range"
+                    , Html.Attributes.min "0"
+                    , Html.Attributes.max "1"
+                    , Html.Attributes.step "0.1"
+                    , value <| String.fromFloat hiddenCard.opacity
+                    , onInput (HiddenCardOpacity hiddenCard.id >> UpdateField)
+                    , classes [ db, hover_black, measure, pv2, br2, mb2, w_80 ]
+                    ]
+                    []
+                ]
+            ]
+        ]
 
 
 onMouseDown : (Card.DragStartDetails -> Msg) -> Attribute Msg
 onMouseDown eventBuilder =
     Decode.map5
         Card.DragStartDetails
-        position
+        Position.decoder
         (Decode.at [ "target", "parentElement", "offsetWidth" ] (Decode.map round Decode.float))
         (Decode.at [ "target", "parentElement", "offsetHeight" ] (Decode.map round Decode.float))
         (Decode.field "layerX" Decode.int)

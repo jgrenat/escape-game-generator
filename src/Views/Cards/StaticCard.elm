@@ -4,15 +4,15 @@ import Array exposing (Array)
 import Data.Card as Card
 import Html exposing (Attribute, Html, div, h1, img, small, span, text)
 import Html.Attributes exposing (src, style)
-import Tachyons exposing (classes)
-import Tachyons.Classes exposing (absolute, f4, o_10, cover, b)
-import Views.Cards.CardStyles as Styles
+import Tachyons.Classes exposing (absolute, b, cover, f4, o_10)
+import Tachyons.Tachyons exposing (classes)
+import Views.Cards.CardStyles as Styles exposing (toStyle)
 
 
 view : String -> String -> Card.Model -> Html msg
 view width height model =
     div
-        [ style (Styles.cardStyles width height), classes Styles.cardClasses ]
+        ([ classes Styles.cardClasses ] ++ toStyle (Styles.cardStyles width height))
         [ viewIllustration model.hiddenCards
         , viewCardContent model
         , viewNumber model.number
@@ -22,12 +22,10 @@ view width height model =
 viewIllustration : Array Card.HiddenCard -> Html msg
 viewIllustration hiddenCards =
     div
-        [ style
-            [ ( "width", "100%" )
-            , ( "height", "60%" )
-            , ( "background-image", "url('/assorted-business-cabinet-327173.jpg')" )
-            , ( "border-bottom", "1px solid black" )
-            ]
+        [ style "width" "100%"
+        , style "height" "60%"
+        , style "background-image" "url('/assorted-business-cabinet-327173.jpg')"
+        , style "border-bottom" "1px solid black"
         , classes [ absolute, cover ]
         ]
         (Array.map viewHiddenCard hiddenCards |> Array.toList |> List.reverse)
@@ -36,18 +34,14 @@ viewIllustration hiddenCards =
 viewHiddenCard : Card.HiddenCard -> Html msg
 viewHiddenCard hiddenCard =
     div
-        [ classes [ absolute, f4, o_10, b ]
-        , Styles.hiddenCardStyles hiddenCard |> style
-        ]
-        [ text (toString hiddenCard.number) ]
+        ([ classes [ absolute, f4, o_10, b ] ] ++ toStyle (Styles.hiddenCardStyles hiddenCard))
+        [ text (String.fromInt hiddenCard.number) ]
 
 
 viewCardContent : Card.Model -> Html msg
 viewCardContent model =
     div
-        [ style Styles.contentStyles
-        , classes Styles.contentClasses
-        ]
+        ([ classes Styles.contentClasses ] ++ toStyle Styles.contentStyles)
         [ div [] [ Card.contentToString model.cardContent |> text ]
         ]
 
@@ -55,7 +49,5 @@ viewCardContent model =
 viewNumber : Int -> Html msg
 viewNumber number =
     div
-        [ classes Styles.numberClasses
-        , style Styles.numberStyles
-        ]
-        [ toString number |> text ]
+        ([ classes Styles.numberClasses ] ++ toStyle Styles.numberStyles)
+        [ String.fromInt number |> text ]

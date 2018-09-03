@@ -1,0 +1,29 @@
+{
+  "name": "escape-game-generator",
+  "version": "1.0.0",
+  "description": "This repository is an Escape Game generator created using Elm.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "cpy-cli": "^2.0.0",
+    "elm-live": "^3.0.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "elm-live ./src/Main.elm --dir=./build --output=build/elm.js --before-build='./copy-assets.sh'",
+    "copy:assets": "cpy 'public/*' build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jgrenat/escape-game-generator.git"
+  },
+  "author": "jgrenat",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jgrenat/escape-game-generator/issues"
+  },
+  "homepage": "https://github.com/jgrenat/escape-game-generator#readme"
+}
