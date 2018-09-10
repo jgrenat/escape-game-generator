@@ -1,5 +1,6 @@
 module Data.Card exposing
     ( CardId
+    , CardIllustration(..)
     , Content(..)
     , Drag
     , DragEndDetails
@@ -13,6 +14,7 @@ module Data.Card exposing
     , encode
     , idParser
     , idToString
+    , toNumber
     )
 
 import Array exposing (Array)
@@ -30,6 +32,7 @@ type alias Model =
     { nextHiddenCardId : Int
     , number : Int
     , cardContent : Content
+    , illustration : CardIllustration
     , hiddenCards : Array HiddenCard
     , draggedHiddenCard : Maybe (Drag HiddenCard)
     , id : CardId
@@ -42,6 +45,12 @@ type CardId
 
 type Content
     = Content String
+
+
+type CardIllustration
+    = NoIllustration
+    | Base64 String
+    | Url String
 
 
 type alias HiddenCard =
@@ -89,6 +98,7 @@ decoder =
         |> JsonPipeline.required "nextHiddenCardId" Decode.int
         |> JsonPipeline.required "number" Decode.int
         |> JsonPipeline.required "cardContent" cardContentDecoder
+        |> JsonPipeline.optional "illustration" illustrationDecoder NoIllustration
         |> JsonPipeline.required "hiddenCards" (Decode.array hiddenCardDecoder)
         |> JsonPipeline.hardcoded Nothing
         |> JsonPipeline.required "id" cardIdDecoder
@@ -123,6 +133,7 @@ encode model =
         [ ( "nextHiddenCardId", Encode.int model.nextHiddenCardId )
         , ( "number", Encode.int model.number )
         , ( "cardContent", contentToString model.cardContent |> Encode.string )
+        , ( "illustration", encodeIllustration model.illustration )
         , ( "hiddenCards", Encode.array encodeHiddenCard model.hiddenCards )
         , ( "id", idToString model.id |> Encode.string )
         ]
@@ -142,16 +153,34 @@ encodeHiddenCard hiddenCard =
         ]
 
 
+encodeIllustration : CardIllustration -> Decode.Value
+encodeIllustration illustration =
+    case illustration of
+        NoIllustration ->
+            Encode.null
+
+        Base64 base64 ->
+            Encode.object [ ( "type", Encode.string "base64" ), ( "value", Encode.string base64 ) ]
+
+        Url url ->
+            Encode.object [ ( "type", Encode.string "url" ), ( "value", Encode.string url ) ]
+
+
 idToString : CardId -> String
 idToString (CardId cardId) =
     cardId
+
+
+toNumber : Model -> Int
+toNumber cardModel =
+    cardModel.number
 
 
 createCardCommand : Int -> Content -> (Model -> msg) -> Cmd msg
 createCardCommand number content event =
     Random.generate event
         (idGenerator
-            |> Random.map (Model 1 number content Array.empty Nothing)
+            |> Random.map (Model 1 number content NoIllustration Array.empty Nothing)
         )
 
 
@@ -182,6 +211,26 @@ randomLowercaseLetter =
 contentToString : Content -> String
 contentToString (Content content) =
     content
+
+
+illustrationDecoder : Decoder CardIllustration
+illustrationDecoder =
+    Decode.oneOf
+        [ Decode.map2 Tuple.pair (Decode.field "type" Decode.string) (Decode.field "value" Decode.string)
+            |> Decode.andThen
+                (\( illustrationType, value ) ->
+                    case illustrationType of
+                        "base64" ->
+                            Base64 value |> Decode.succeed
+
+                        "path" ->
+                            Url value |> Decode.succeed
+
+                        _ ->
+                            Decode.fail "Invalid illustration type"
+                )
+        , Decode.null NoIllustration
+        ]
 
 
 dragEndDecoder : Decoder DragEndDetails

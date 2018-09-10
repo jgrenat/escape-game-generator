@@ -73,7 +73,7 @@ newGameSet : Key -> ( Model, Cmd Msg )
 newGameSet key =
     let
         cardCommand =
-            createCardCommand 15 (Content "Random content") CardCreated
+            createCardCommand 1 (Content "Random content") CardCreated
     in
     ( Model Array.empty DeckPage AutoSave key, cardCommand )
 

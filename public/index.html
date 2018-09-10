@@ -23,6 +23,8 @@
       <script>
           const app = Elm.Main.init({ flags: localStorage.getItem("model") || "" });
 
+
+          /* Drag & drop */
           document.addEventListener("mouseup", mouseEvent => {
             const parent = document.getElementById("js-area");
             if (!parent) {
@@ -35,8 +37,34 @@
             });
           });
 
+
+          /* State save */
           app.ports.toSaveModule.subscribe(modelToSave => {
             localStorage.setItem("model", modelToSave);
+          });
+
+
+          /* Image selection */
+          app.ports.fileSelected.subscribe(function (id) {
+              const node = document.getElementById(id);
+              if (node === null) {
+                  return;
+              }
+
+              const file = node.files[0];
+              const reader = new FileReader();
+
+              reader.onload = (function (event) {
+                  const base64encoded = event.target.result;
+                  const portData = {
+                      contents: base64encoded,
+                      filename: file.name
+                  };
+
+                  app.ports.fileContentRead.send(portData);
+              });
+
+              reader.readAsDataURL(file);
           });
       </script>
   </body>

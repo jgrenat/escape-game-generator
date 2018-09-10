@@ -1,4 +1,4 @@
-module Views.Cards.StaticCard exposing (view, viewNumber)
+module Views.Cards.StaticCard exposing (illustrationToBackgroundStyle, view, viewNumber)
 
 import Array exposing (Array)
 import Data.Card as Card
@@ -13,22 +13,35 @@ view : String -> String -> Card.Model -> Html msg
 view width height model =
     div
         ([ classes Styles.cardClasses ] ++ toStyle (Styles.cardStyles width height))
-        [ viewIllustration model.hiddenCards
+        [ viewIllustration model.illustration model.hiddenCards
         , viewCardContent model
         , viewNumber model.number
         ]
 
 
-viewIllustration : Array Card.HiddenCard -> Html msg
-viewIllustration hiddenCards =
+viewIllustration : Card.CardIllustration -> Array Card.HiddenCard -> Html msg
+viewIllustration illustration hiddenCards =
     div
         [ style "width" "100%"
         , style "height" "60%"
-        , style "background-image" "url('/assorted-business-cabinet-327173.jpg')"
+        , illustrationToBackgroundStyle illustration
         , style "border-bottom" "1px solid black"
         , classes [ absolute, cover ]
         ]
         (Array.map viewHiddenCard hiddenCards |> Array.toList |> List.reverse)
+
+
+illustrationToBackgroundStyle : Card.CardIllustration -> Html.Attribute msg
+illustrationToBackgroundStyle illustration =
+    case illustration of
+        Card.NoIllustration ->
+            style "background-color" "gray"
+
+        Card.Base64 base64 ->
+            style "background-image" ("url(data:" ++ base64 ++ ")")
+
+        Card.Url url ->
+            style "background-image" ("url(" ++ url ++ ")")
 
 
 viewHiddenCard : Card.HiddenCard -> Html msg

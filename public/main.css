@@ -1,12 +1,22 @@
 .card .remove {
-    display: none;
-    z-index: 1;
+  display: none;
+  z-index: 1;
 }
 
 .card:hover .remove {
-    display: inherit;
+  display: inherit;
 }
 
 .card:hover .remove:hover {
-    background-color: white;
+  background-color: white;
+}
+
+.duplicateCards {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  background-color: rgba(255, 0, 0, 0.2);
+  color: red;
+  border-radius: 5px;
+  padding: 2px 15px;
 }

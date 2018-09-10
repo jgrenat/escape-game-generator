@@ -10,7 +10,7 @@ port module Pages.CardEditor exposing
 
 import Array exposing (Array)
 import Browser.Events
-import Data.Card as Card exposing (CardId, HiddenCard, contentToString, createCardCommand)
+import Data.Card as Card exposing (CardId, CardIllustration, HiddenCard, contentToString, createCardCommand)
 import Data.Position as Position
 import Html exposing (Attribute, Html, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
 import Html.Attributes exposing (contenteditable, for, id, name, src, step, style, type_, value)
@@ -19,7 +19,7 @@ import Json.Decode as Decode exposing (Decoder)
 import Tachyons.Classes exposing (absolute, b, b__black_10, b__black_20, ba, bg_gold, black_70, br2, br3, br4, br_100, cover, db, f2, f3, f4, f6, flex, flex_row, fw6, h2, hover_black, items_center, justify_center, left_0, left_1, lh_copy, mb2, measure, ml1, ml2, ml3, ml5, mt2, mt3, o_10, o_20, o_50, o_60, o_90, overflow_hidden, pa2, pa3, ph1, ph2, pt1, pv2, relative, right_0, serif, top_0, top_1, w2, w5, w_100, w_20, w_50, w_80, w_90, white, white_20, white_40, white_50, white_70)
 import Tachyons.Tachyons exposing (classes, tachyons)
 import Views.Cards.CardStyles as CardStyles exposing (toStyle)
-import Views.Cards.StaticCard as CardView
+import Views.Cards.StaticCard as CardView exposing (illustrationToBackgroundStyle)
 import Views.Utils.Forms as Forms
 
 
@@ -33,6 +33,12 @@ type Model
     = Model
         { card : Card.Model
         }
+
+
+type alias ImagePortData =
+    { contents : String
+    , filename : String
+    }
 
 
 init : Card.Model -> Model
@@ -78,6 +84,8 @@ type Msg
     | DragEnd (Result Decode.Error Card.DragEndDetails)
     | DiscardChanges
     | SaveChanges
+    | IllustrationSelected
+    | IllustrationRead ImagePortData
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, Event )
@@ -265,6 +273,16 @@ update msg (Model model) =
         SaveChanges ->
             ( Model model, Cmd.none, Save card )
 
+        IllustrationSelected ->
+            ( Model model, fileSelected "cardIllustrationInput", NoEvent )
+
+        IllustrationRead illustrationDetails ->
+            let
+                updatedCard =
+                    { card | illustration = Card.Base64 illustrationDetails.contents }
+            in
+            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+
 
 updateHiddenCard : Card.Model -> Int -> (HiddenCard -> HiddenCard) -> Card.Model
 updateHiddenCard cardModel hiddenCardId updateFunction =
@@ -297,15 +315,25 @@ updateIf filter transform elements =
 
 subscriptions : Model -> Sub Msg
 subscriptions (Model { card }) =
-    case card.draggedHiddenCard of
-        Nothing ->
-            Sub.none
+    let
+        dragSubscription =
+            case card.draggedHiddenCard of
+                Nothing ->
+                    Sub.none
 
-        Just _ ->
-            Sub.batch [ Browser.Events.onMouseMove (Position.decoder |> Decode.map DragAt), mouseUp (Decode.decodeValue Card.dragEndDecoder >> DragEnd) ]
+                Just _ ->
+                    Sub.batch [ Browser.Events.onMouseMove (Position.decoder |> Decode.map DragAt), mouseUp (Decode.decodeValue Card.dragEndDecoder >> DragEnd) ]
+    in
+    Sub.batch [ dragSubscription, fileContentRead IllustrationRead ]
 
 
 port mouseUp : (Decode.Value -> msg) -> Sub msg
+
+
+port fileSelected : String -> Cmd msg
+
+
+port fileContentRead : (ImagePortData -> msg) -> Sub msg
 
 
 
@@ -328,18 +356,18 @@ viewCard : Card.Model -> Html Msg
 viewCard cardModel =
     div
         (classes CardStyles.cardClasses :: toStyle (CardStyles.cardStyles "300px" "600px"))
-        [ viewIllustration cardModel.draggedHiddenCard cardModel.hiddenCards
+        [ viewIllustration cardModel.illustration cardModel.draggedHiddenCard cardModel.hiddenCards
         , viewCardContent cardModel
         , CardView.viewNumber cardModel.number
         ]
 
 
-viewIllustration : Maybe (Card.Drag HiddenCard) -> Array HiddenCard -> Html Msg
-viewIllustration maybeDraggedHiddenCard hiddenCards =
+viewIllustration : CardIllustration -> Maybe (Card.Drag HiddenCard) -> Array HiddenCard -> Html Msg
+viewIllustration illustration maybeDraggedHiddenCard hiddenCards =
     div
         [ style "width" "100%"
         , style "height" "60%"
-        , style "background-image" "url('/assorted-business-cabinet-327173.jpg')"
+        , illustrationToBackgroundStyle illustration
         , style "border-bottom" "1px solid black"
         , id "js-area"
         , classes [ absolute, cover ]
@@ -409,7 +437,8 @@ viewStaticHiddenCard hiddenCard =
 viewCardController : Card.Model -> Html Msg
 viewCardController cardModel =
     form [ style "width" "300px", classes [ ml5 ] ]
-        [ cardNumberInput cardModel.number
+        [ cardIllustrationInput
+        , cardNumberInput cardModel.number
         , cardContentTextarea (contentToString cardModel.cardContent)
         , div [] (Array.map viewHiddenCardForm cardModel.hiddenCards |> Array.toList)
         , div []
@@ -419,6 +448,21 @@ viewCardController cardModel =
             [ Forms.button [ type_ "button", onClick DiscardChanges ] [ text "Cancel changes" ]
             , Forms.primaryButton [ type_ "button", onClick SaveChanges ] [ text "Save changes" ]
             ]
+        ]
+
+
+cardIllustrationInput : Html Msg
+cardIllustrationInput =
+    div [ classes [ mt3 ] ]
+        [ label [ for "cardIllustrationInput", classes [ f6, db, mb2 ] ] [ text "Card illustration" ]
+        , input
+            [ id "cardIllustrationInput"
+            , name "cardIllustrationInput"
+            , type_ "file"
+            , on "change" (Decode.succeed IllustrationSelected)
+            , classes [ db, hover_black, w_100, measure, ba, b__black_20, pa2, br2, mb2 ]
+            ]
+            []
         ]
 
 
