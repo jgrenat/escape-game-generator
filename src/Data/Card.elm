@@ -1,8 +1,10 @@
 module Data.Card exposing
     ( CardId
     , CardIllustration(..)
-    , Content(..)
+    , CardTypeDetails(..)
+    , Content
     , HiddenCard
+    , IllustrationAndTextCardModel
     , Model
     , contentToString
     , createCardCommand
@@ -10,7 +12,12 @@ module Data.Card exposing
     , encode
     , idParser
     , idToString
+    , stringToContent
+    , toCardModel
+    , toCardTypeDetails
     , toNumber
+    , updateCardContent
+    , updateCardModel
     )
 
 import Array exposing (Array)
@@ -24,14 +31,27 @@ import Random.String
 import Url.Parser
 
 
-type alias Model =
+type Model
+    = FullIllustrationCard CardModel
+    | IllustrationAndTextCard CardModel IllustrationAndTextCardModel
+
+
+type CardTypeDetails
+    = FullIllustrationCardDetails
+    | IllustrationAndTextCardDetails IllustrationAndTextCardModel
+
+
+type alias CardModel =
     { nextHiddenCardId : Int
     , number : Int
-    , cardContent : Content
     , illustration : CardIllustration
     , hiddenCards : Array HiddenCard
     , id : CardId
     }
+
+
+type alias IllustrationAndTextCardModel =
+    { cardContent : Content }
 
 
 type CardId
@@ -48,6 +68,11 @@ type CardIllustration
     | Url String
 
 
+type CardType
+    = FullIllustration
+    | IllustrationAndText
+
+
 type alias HiddenCard =
     { id : Int
     , number : Int
@@ -62,10 +87,51 @@ type alias HiddenCard =
 
 decoder : Decoder Model
 decoder =
-    Decode.succeed Model
+    cardTypeDecoder
+        |> Decode.andThen
+            (\cardType ->
+                case cardType of
+                    IllustrationAndText ->
+                        Decode.succeed IllustrationAndTextCard
+                            |> JsonPipeline.custom cardModelDecoder
+                            |> JsonPipeline.custom illustrationAndTextCardModelDecoder
+
+                    FullIllustration ->
+                        Decode.succeed FullIllustrationCard
+                            |> JsonPipeline.custom cardModelDecoder
+            )
+
+
+cardTypeDecoder : Decoder CardType
+cardTypeDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\cardTypeString ->
+                case cardTypeString of
+                    "fullIllustration" ->
+                        Decode.succeed FullIllustration
+
+                    "illustrationAndText" ->
+                        Decode.succeed IllustrationAndText
+
+                    _ ->
+                        "Unknown card type value "
+                            ++ cardTypeString
+                            |> Decode.fail
+            )
+
+
+illustrationAndTextCardModelDecoder : Decoder IllustrationAndTextCardModel
+illustrationAndTextCardModelDecoder =
+    Decode.succeed IllustrationAndTextCardModel
+        |> JsonPipeline.required "cardContent" cardContentDecoder
+
+
+cardModelDecoder : Decoder CardModel
+cardModelDecoder =
+    Decode.succeed CardModel
         |> JsonPipeline.required "nextHiddenCardId" Decode.int
         |> JsonPipeline.required "number" Decode.int
-        |> JsonPipeline.required "cardContent" cardContentDecoder
         |> JsonPipeline.optional "illustration" illustrationDecoder NoIllustration
         |> JsonPipeline.required "hiddenCards" (Decode.array hiddenCardDecoder)
         |> JsonPipeline.required "id" cardIdDecoder
@@ -96,14 +162,67 @@ cardIdDecoder =
 
 encode : Model -> Encode.Value
 encode model =
+    let
+        cardModel =
+            toCardModel model
+
+        specificFields =
+            case model of
+                IllustrationAndTextCard _ illustrationAndTextCardModel ->
+                    [ ( "cardContent", contentToString illustrationAndTextCardModel.cardContent |> Encode.string ) ]
+
+                FullIllustrationCard _ ->
+                    []
+    in
     Encode.object
-        [ ( "nextHiddenCardId", Encode.int model.nextHiddenCardId )
-        , ( "number", Encode.int model.number )
-        , ( "cardContent", contentToString model.cardContent |> Encode.string )
-        , ( "illustration", encodeIllustration model.illustration )
-        , ( "hiddenCards", Encode.array encodeHiddenCard model.hiddenCards )
-        , ( "id", idToString model.id |> Encode.string )
-        ]
+        ([ ( "nextHiddenCardId", Encode.int cardModel.nextHiddenCardId )
+         , ( "number", Encode.int cardModel.number )
+         , ( "illustration", encodeIllustration cardModel.illustration )
+         , ( "hiddenCards", Encode.array encodeHiddenCard cardModel.hiddenCards )
+         , ( "id", idToString cardModel.id |> Encode.string )
+         ]
+            ++ specificFields
+        )
+
+
+toCardModel : Model -> CardModel
+toCardModel model =
+    case model of
+        FullIllustrationCard cardModel ->
+            cardModel
+
+        IllustrationAndTextCard cardModel _ ->
+            cardModel
+
+
+updateCardModel : CardModel -> Model -> Model
+updateCardModel newCardModel model =
+    case model of
+        FullIllustrationCard _ ->
+            FullIllustrationCard newCardModel
+
+        IllustrationAndTextCard _ illustrationAndTextCardModel ->
+            IllustrationAndTextCard newCardModel illustrationAndTextCardModel
+
+
+updateCardContent : Content -> Model -> Model
+updateCardContent newContent model =
+    case model of
+        FullIllustrationCard cardModel ->
+            FullIllustrationCard cardModel
+
+        IllustrationAndTextCard cardModel illustrationAndTextCardModel ->
+            IllustrationAndTextCard cardModel { illustrationAndTextCardModel | cardContent = newContent }
+
+
+toCardTypeDetails : Model -> CardTypeDetails
+toCardTypeDetails model =
+    case model of
+        FullIllustrationCard _ ->
+            FullIllustrationCardDetails
+
+        IllustrationAndTextCard _ illustrationAndTextCardModel ->
+            IllustrationAndTextCardDetails illustrationAndTextCardModel
 
 
 encodeHiddenCard : HiddenCard -> Decode.Value
@@ -139,15 +258,20 @@ idToString (CardId cardId) =
 
 
 toNumber : Model -> Int
-toNumber cardModel =
-    cardModel.number
+toNumber model =
+    toCardModel model |> .number
 
 
 createCardCommand : Int -> Content -> (Model -> msg) -> Cmd msg
 createCardCommand number content event =
     Random.generate event
         (idGenerator
-            |> Random.map (Model 1 number content NoIllustration Array.empty)
+            |> Random.map (CardModel 1 number NoIllustration Array.empty)
+            |> Random.map
+                (\cardModel ->
+                    IllustrationAndTextCardModel content
+                        |> IllustrationAndTextCard cardModel
+                )
         )
 
 
@@ -178,6 +302,11 @@ randomLowercaseLetter =
 contentToString : Content -> String
 contentToString (Content content) =
     content
+
+
+stringToContent : String -> Content
+stringToContent stringContent =
+    Content stringContent
 
 
 illustrationDecoder : Decoder CardIllustration

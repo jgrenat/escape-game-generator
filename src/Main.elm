@@ -50,7 +50,7 @@ init savedGame url key =
     in
     case Route.fromUrl url of
         Just (Route.DeckCard _ cardId) ->
-            Array.filter (\card -> card.id == cardId) model.cards
+            Array.filter (\card -> (Card.toCardModel card |> .id) == cardId) model.cards
                 |> Array.get 0
                 |> Maybe.map (\card -> CardEditorPage card (CardEditorPage.init card))
                 |> Maybe.map (\cardPage -> { model | page = cardPage })
@@ -73,7 +73,7 @@ newGameSet : Key -> ( Model, Cmd Msg )
 newGameSet key =
     let
         cardCommand =
-            createCardCommand 1 (Content "Random content") CardCreated
+            createCardCommand 1 (Card.stringToContent "Random content") CardCreated
     in
     ( Model Array.empty DeckPage AutoSave key, cardCommand )
 
@@ -172,7 +172,7 @@ update msg model =
         ( DeckPage, EditCard card ) ->
             let
                 newUrlCmd =
-                    Route.DeckCard "1" card.id
+                    Route.DeckCard "1" (Card.toCardModel card |> .id)
                         |> Route.newUrl model.navigationKey
             in
             ( { model | page = CardEditorPage card (CardEditorPage.init card) }, newUrlCmd )
@@ -184,12 +184,13 @@ update msg model =
             let
                 biggestCardNumber =
                     Array.toList model.cards
+                        |> List.map Card.toCardModel
                         |> List.map .number
                         |> List.maximum
                         |> Maybe.withDefault 1
 
                 newCardCommand =
-                    createCardCommand (biggestCardNumber + 1) (Content "The content of the card goes here") CardCreated
+                    createCardCommand (biggestCardNumber + 1) (Card.stringToContent "The content of the card goes here") CardCreated
             in
             ( model, newCardCommand )
 

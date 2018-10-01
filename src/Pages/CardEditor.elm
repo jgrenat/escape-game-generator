@@ -164,14 +164,20 @@ update msg (Model model) =
                                 |> max 0
                                 |> min 95
 
+                        cardModel =
+                            Card.toCardModel card
+
                         hiddenCards =
                             updateIf
                                 (\hiddenCard -> hiddenCard.id == draggedHiddenCard.element.id)
                                 (\hiddenCard -> { hiddenCard | top = newY, left = newX })
-                                card.hiddenCards
+                                cardModel.hiddenCards
+
+                        newCardModel =
+                            { cardModel | hiddenCards = hiddenCards }
 
                         updatedCard =
-                            { card | hiddenCards = hiddenCards }
+                            Card.updateCardModel newCardModel card
                     in
                     ( Model { model | card = updatedCard, draggedHiddenCard = Nothing }, Cmd.none, NoEvent )
 
@@ -180,38 +186,56 @@ update msg (Model model) =
 
         AddHiddenCard ->
             let
+                cardModel =
+                    Card.toCardModel card
+
                 newHiddenCard =
-                    defaultHiddenCard card.nextHiddenCardId
+                    defaultHiddenCard cardModel.nextHiddenCardId
 
                 newHiddenCardArray =
-                    Array.push newHiddenCard card.hiddenCards
+                    Array.push newHiddenCard cardModel.hiddenCards
+
+                newCardModel =
+                    { cardModel | hiddenCards = newHiddenCardArray, nextHiddenCardId = cardModel.nextHiddenCardId + 1 }
 
                 updatedCard =
-                    { card | hiddenCards = newHiddenCardArray, nextHiddenCardId = card.nextHiddenCardId + 1 }
+                    Card.updateCardModel newCardModel card
             in
             ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
         RemoveHiddenCard id ->
             let
+                cardModel =
+                    Card.toCardModel card
+
                 newHiddenCardsArray =
-                    Array.filter (\hiddenCard -> hiddenCard.id /= id) card.hiddenCards
+                    Array.filter (\hiddenCard -> hiddenCard.id /= id) cardModel.hiddenCards
+
+                newCardModel =
+                    { cardModel | hiddenCards = newHiddenCardsArray }
 
                 updatedCard =
-                    { card | hiddenCards = newHiddenCardsArray }
+                    Card.updateCardModel newCardModel card
             in
             ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
         UpdateField (CardNumber newNumber) ->
             let
+                cardModel =
+                    Card.toCardModel card
+
+                newCardModel =
+                    { cardModel | number = String.toInt newNumber |> Maybe.withDefault cardModel.number }
+
                 updatedCard =
-                    { card | number = String.toInt newNumber |> Maybe.withDefault card.number }
+                    Card.updateCardModel newCardModel card
             in
             ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
         UpdateField (CardContent newContent) ->
             let
                 updatedCard =
-                    { card | cardContent = Card.Content newContent }
+                    Card.updateCardContent (Card.stringToContent newContent) card
             in
             ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
 
@@ -287,8 +311,14 @@ update msg (Model model) =
 
         IllustrationRead illustrationDetails ->
             let
+                cardModel =
+                    Card.toCardModel card
+
+                newCardModel =
+                    { cardModel | illustration = Card.Base64 illustrationDetails.contents }
+
                 updatedCard =
-                    { card | illustration = Card.Base64 illustrationDetails.contents }
+                    Card.updateCardModel newCardModel card
 
                 updatedCropper =
                     Cropper.init { url = illustrationDetails.contents, crop = { width = 280, height = 348 } }
@@ -323,8 +353,14 @@ update msg (Model model) =
 
                 Cropping cropperModel ->
                     let
+                        cardModel =
+                            Card.toCardModel card
+
+                        newCardModel =
+                            { cardModel | illustration = Card.Base64 imageData }
+
                         updatedCard =
-                            { card | illustration = Card.Base64 imageData }
+                            Card.updateCardModel newCardModel card
                     in
                     ( Model { model | card = updatedCard, cropper = NotCropping }, Cmd.none, NoEvent )
 
@@ -345,15 +381,21 @@ update msg (Model model) =
 
 
 updateHiddenCard : Card.Model -> Int -> (HiddenCard -> HiddenCard) -> Card.Model
-updateHiddenCard cardModel hiddenCardId updateFunction =
+updateHiddenCard model hiddenCardId updateFunction =
     let
+        cardModel =
+            Card.toCardModel model
+
         newHiddenCards =
             updateIf
                 (\hiddenCard -> hiddenCard.id == hiddenCardId)
                 updateFunction
                 cardModel.hiddenCards
+
+        newCardModel =
+            { cardModel | hiddenCards = newHiddenCards }
     in
-    { cardModel | hiddenCards = newHiddenCards }
+    Card.updateCardModel newCardModel model
 
 
 updateIf : (a -> Bool) -> (a -> a) -> Array a -> Array a
@@ -430,13 +472,25 @@ view (Model { card, cropper, draggedHiddenCard }) =
 
 
 viewCard : Card.Model -> Maybe (Drag.Drag HiddenCard) -> Html Msg
-viewCard cardModel draggedHiddenCard =
-    div
-        (classes CardStyles.cardClasses :: toStyle (CardStyles.cardStyles "300px" "600px"))
-        [ viewIllustration cardModel.illustration draggedHiddenCard cardModel.hiddenCards
-        , viewCardContent cardModel
-        , CardView.viewNumber cardModel.number
-        ]
+viewCard model draggedHiddenCard =
+    let
+        cardModel =
+            Card.toCardModel model
+
+        cardTypeDetails =
+            Card.toCardTypeDetails model
+    in
+    case cardTypeDetails of
+        Card.IllustrationAndTextCardDetails details ->
+            div
+                (classes CardStyles.cardClasses :: toStyle (CardStyles.cardStyles "300px" "600px"))
+                [ viewIllustration cardModel.illustration draggedHiddenCard cardModel.hiddenCards
+                , viewCardContent details.cardContent
+                , CardView.viewNumber cardModel.number
+                ]
+
+        Card.FullIllustrationCardDetails ->
+            div [] []
 
 
 viewIllustration : CardIllustration -> Maybe (Drag.Drag HiddenCard) -> Array HiddenCard -> Html Msg
@@ -452,15 +506,15 @@ viewIllustration illustration maybeDraggedHiddenCard hiddenCards =
         (Array.map (viewHiddenCard maybeDraggedHiddenCard) hiddenCards |> Array.toList |> List.reverse)
 
 
-viewCardContent : Card.Model -> Html Msg
-viewCardContent model =
+viewCardContent : Card.Content -> Html Msg
+viewCardContent content =
     div
         ([ classes CardStyles.contentClasses ] ++ toStyle CardStyles.contentStyles)
         [ div
             [ contenteditable True
             , on "blur" (Decode.map (CardContent >> UpdateField) targetTextContent)
             ]
-            [ contentToString model.cardContent |> text ]
+            [ contentToString content |> text ]
         ]
 
 
@@ -512,11 +566,26 @@ viewStaticHiddenCard hiddenCard =
 
 
 viewCardController : Card.Model -> Html Msg
-viewCardController cardModel =
+viewCardController card =
+    let
+        cardModel =
+            Card.toCardModel card
+
+        cardTypeDetails =
+            Card.toCardTypeDetails card
+
+        cardContentPart =
+            case cardTypeDetails of
+                Card.IllustrationAndTextCardDetails details ->
+                    cardContentTextarea (contentToString details.cardContent)
+
+                Card.FullIllustrationCardDetails ->
+                    div [] []
+    in
     form [ style "width" "300px", classes [ ml5 ] ]
         [ cardIllustrationInput
         , cardNumberInput cardModel.number
-        , cardContentTextarea (contentToString cardModel.cardContent)
+        , cardContentPart
         , div [] (Array.map viewHiddenCardForm cardModel.hiddenCards |> Array.toList)
         , div []
             [ Forms.secondaryButton [ onClick AddHiddenCard ] [ text "Add another hidden card" ]

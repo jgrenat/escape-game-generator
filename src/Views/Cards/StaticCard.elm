@@ -11,12 +11,24 @@ import Views.Cards.CardStyles as Styles exposing (toStyle)
 
 view : String -> String -> Card.Model -> Html msg
 view width height model =
-    div
-        ([ classes Styles.cardClasses ] ++ toStyle (Styles.cardStyles width height))
-        [ viewIllustration model.illustration model.hiddenCards
-        , viewCardContent model
-        , viewNumber model.number
-        ]
+    let
+        cardModel =
+            Card.toCardModel model
+
+        cardTypeDetails =
+            Card.toCardTypeDetails model
+    in
+    case cardTypeDetails of
+        Card.IllustrationAndTextCardDetails details ->
+            div
+                ([ classes Styles.cardClasses ] ++ toStyle (Styles.cardStyles width height))
+                [ viewIllustration cardModel.illustration cardModel.hiddenCards
+                , viewCardContent details.cardContent
+                , viewNumber cardModel.number
+                ]
+
+        Card.FullIllustrationCardDetails ->
+            span [] []
 
 
 viewIllustration : Card.CardIllustration -> Array Card.HiddenCard -> Html msg
@@ -38,11 +50,11 @@ viewHiddenCard hiddenCard =
         [ text (String.fromInt hiddenCard.number) ]
 
 
-viewCardContent : Card.Model -> Html msg
-viewCardContent model =
+viewCardContent : Card.Content -> Html msg
+viewCardContent content =
     div
         ([ classes Styles.contentClasses ] ++ toStyle Styles.contentStyles)
-        [ div [] [ Card.contentToString model.cardContent |> text ]
+        [ div [] [ Card.contentToString content |> text ]
         ]
 
 
