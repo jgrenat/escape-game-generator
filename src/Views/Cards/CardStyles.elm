@@ -1,4 +1,4 @@
-module Views.Cards.CardStyles exposing (cardClasses, cardStyles, contentClasses, contentStyles, hiddenCardStyles, numberClasses, numberStyles, toStyle)
+module Views.Cards.CardStyles exposing (cardClasses, cardStyles, contentClasses, contentStyles, hiddenCardStyles, illustrationToBackgroundStyle, numberClasses, numberStyles, toStyle)
 
 import Data.Card as Card
 import Html
@@ -31,6 +31,19 @@ contentStyles =
 contentClasses : List String
 contentClasses =
     [ absolute, pa3, flex, justify_center, items_center, serif, f4 ]
+
+
+illustrationToBackgroundStyle : Card.CardIllustration -> Html.Attribute msg
+illustrationToBackgroundStyle illustration =
+    case illustration of
+        Card.NoIllustration ->
+            style "background-color" "gray"
+
+        Card.Base64 base64 ->
+            style "background-image" ("url(data:" ++ base64 ++ ")")
+
+        Card.Url url ->
+            style "background-image" ("url(" ++ url ++ ")")
 
 
 hiddenCardStyles : Card.HiddenCard -> List ( String, String )

@@ -10,16 +10,19 @@ port module Pages.CardEditor exposing
 
 import Array exposing (Array)
 import Browser.Events
+import Cropper
 import Data.Card as Card exposing (CardId, CardIllustration, HiddenCard, contentToString, createCardCommand)
-import Data.Position as Position
+import Data.Drag as Drag exposing (Drag)
+import Data.Position as Position exposing (Position)
 import Html exposing (Attribute, Html, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
-import Html.Attributes exposing (contenteditable, for, id, name, src, step, style, type_, value)
+import Html.Attributes exposing (class, contenteditable, for, id, name, src, step, style, type_, value)
 import Html.Events exposing (on, onClick, onInput)
 import Json.Decode as Decode exposing (Decoder)
+import Return
 import Tachyons.Classes exposing (absolute, b, b__black_10, b__black_20, ba, bg_gold, black_70, br2, br3, br4, br_100, cover, db, f2, f3, f4, f6, flex, flex_row, fw6, h2, hover_black, items_center, justify_center, left_0, left_1, lh_copy, mb2, measure, ml1, ml2, ml3, ml5, mt2, mt3, o_10, o_20, o_50, o_60, o_90, overflow_hidden, pa2, pa3, ph1, ph2, pt1, pv2, relative, right_0, serif, top_0, top_1, w2, w5, w_100, w_20, w_50, w_80, w_90, white, white_20, white_40, white_50, white_70)
 import Tachyons.Tachyons exposing (classes, tachyons)
 import Views.Cards.CardStyles as CardStyles exposing (toStyle)
-import Views.Cards.StaticCard as CardView exposing (illustrationToBackgroundStyle)
+import Views.Cards.StaticCard as CardView
 import Views.Utils.Forms as Forms
 
 
@@ -31,7 +34,9 @@ type Event
 
 type Model
     = Model
-        { card : Card.Model
+        { cropper : Cropper
+        , card : Card.Model
+        , draggedHiddenCard : Maybe (Drag HiddenCard)
         }
 
 
@@ -41,9 +46,14 @@ type alias ImagePortData =
     }
 
 
+type Cropper
+    = NotCropping
+    | Cropping Cropper.Model
+
+
 init : Card.Model -> Model
 init cardModel =
-    Model { card = cardModel }
+    Model { cropper = NotCropping, card = cardModel, draggedHiddenCard = Nothing }
 
 
 defaultHiddenCard : Int -> HiddenCard
@@ -63,6 +73,24 @@ defaultHiddenCard id =
 ---- UPDATE ----
 
 
+type Msg
+    = UpdateField FieldUpdate
+    | AddHiddenCard
+    | RemoveHiddenCard Int
+    | DragStart HiddenCard Drag.DragStartDetails
+    | DragAt Position.Position
+    | DragEnd (Result Decode.Error Drag.DragEndDetails)
+    | DiscardChanges
+    | SaveChanges
+    | IllustrationSelected
+    | IllustrationCropped String
+    | IllustrationRead ImagePortData
+    | CropperMsg Cropper.Msg
+    | ExportCroppedIllustration
+    | Zoom String
+    | CancelCropping
+
+
 type FieldUpdate
     = CardContent String
     | CardNumber String
@@ -73,19 +101,6 @@ type FieldUpdate
     | HiddenCardOpacity Int String
     | HiddenCardRotation Int String
     | HiddenCardSize Int String
-
-
-type Msg
-    = UpdateField FieldUpdate
-    | AddHiddenCard
-    | RemoveHiddenCard Int
-    | DragStart HiddenCard Card.DragStartDetails
-    | DragAt Position.Position
-    | DragEnd (Result Decode.Error Card.DragEndDetails)
-    | DiscardChanges
-    | SaveChanges
-    | IllustrationSelected
-    | IllustrationRead ImagePortData
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, Event )
@@ -107,14 +122,11 @@ update msg (Model model) =
                     , layerX = dragStartDetails.layerX
                     , layerY = dragStartDetails.layerY
                     }
-
-                updatedCard =
-                    { card | draggedHiddenCard = Just drag }
             in
-            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+            ( Model { model | draggedHiddenCard = Just drag }, Cmd.none, NoEvent )
 
         DragAt newPosition ->
-            case card.draggedHiddenCard of
+            case model.draggedHiddenCard of
                 Nothing ->
                     ( Model model, Cmd.none, NoEvent )
 
@@ -128,14 +140,11 @@ update msg (Model model) =
 
                         newDrag =
                             { dragDetails | currentTopOffset = offsetTop, currentLeftOffset = offsetLeft }
-
-                        updatedCard =
-                            { card | draggedHiddenCard = Just newDrag }
                     in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+                    ( Model { model | draggedHiddenCard = Just newDrag }, Cmd.none, NoEvent )
 
         DragEnd (Ok dragEndDetails) ->
-            case card.draggedHiddenCard of
+            case model.draggedHiddenCard of
                 Nothing ->
                     ( Model model, Cmd.none, NoEvent )
 
@@ -162,9 +171,9 @@ update msg (Model model) =
                                 card.hiddenCards
 
                         updatedCard =
-                            { card | draggedHiddenCard = Nothing, hiddenCards = hiddenCards }
+                            { card | hiddenCards = hiddenCards }
                     in
-                    ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+                    ( Model { model | card = updatedCard, draggedHiddenCard = Nothing }, Cmd.none, NoEvent )
 
         DragEnd (Err _) ->
             ( Model model, Cmd.none, NoEvent )
@@ -280,8 +289,59 @@ update msg (Model model) =
             let
                 updatedCard =
                     { card | illustration = Card.Base64 illustrationDetails.contents }
+
+                updatedCropper =
+                    Cropper.init { url = illustrationDetails.contents, crop = { width = 280, height = 348 } }
             in
-            ( Model { model | card = updatedCard }, Cmd.none, NoEvent )
+            ( Model { model | card = updatedCard, cropper = Cropping updatedCropper }, Cmd.none, NoEvent )
+
+        CropperMsg cropperMsg ->
+            case model.cropper of
+                NotCropping ->
+                    ( Model model, Cmd.none, NoEvent )
+
+                Cropping cropperModel ->
+                    let
+                        ( newCropper, cropperCmd ) =
+                            Cropper.update cropperMsg cropperModel
+                                |> Return.mapBoth CropperMsg Cropping
+                    in
+                    ( Model { model | cropper = newCropper }, cropperCmd, NoEvent )
+
+        ExportCroppedIllustration ->
+            case model.cropper of
+                NotCropping ->
+                    ( Model model, Cmd.none, NoEvent )
+
+                Cropping cropperModel ->
+                    ( Model model, toCropper (Cropper.cropData cropperModel), NoEvent )
+
+        IllustrationCropped imageData ->
+            case model.cropper of
+                NotCropping ->
+                    ( Model model, Cmd.none, NoEvent )
+
+                Cropping cropperModel ->
+                    let
+                        updatedCard =
+                            { card | illustration = Card.Base64 imageData }
+                    in
+                    ( Model { model | card = updatedCard, cropper = NotCropping }, Cmd.none, NoEvent )
+
+        Zoom zoomString ->
+            case ( model.cropper, String.toFloat zoomString ) of
+                ( Cropping cropperModel, Just newZoom ) ->
+                    let
+                        newCropperModel =
+                            Cropper.zoom cropperModel newZoom
+                    in
+                    ( Model { model | cropper = Cropping newCropperModel }, Cmd.none, NoEvent )
+
+                _ ->
+                    ( Model model, Cmd.none, NoEvent )
+
+        CancelCropping ->
+            ( Model { model | cropper = NotCropping }, Cmd.none, NoEvent )
 
 
 updateHiddenCard : Card.Model -> Int -> (HiddenCard -> HiddenCard) -> Card.Model
@@ -314,20 +374,34 @@ updateIf filter transform elements =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions (Model { card }) =
+subscriptions (Model { card, cropper, draggedHiddenCard }) =
     let
-        dragSubscription =
-            case card.draggedHiddenCard of
+        dragSubscriptions =
+            case draggedHiddenCard of
                 Nothing ->
                     Sub.none
 
                 Just _ ->
-                    Sub.batch [ Browser.Events.onMouseMove (Position.decoder |> Decode.map DragAt), mouseUp (Decode.decodeValue Card.dragEndDecoder >> DragEnd) ]
+                    Sub.batch [ Browser.Events.onMouseMove (Position.decoder |> Decode.map DragAt), mouseUp (Decode.decodeValue Drag.dragEndDecoder >> DragEnd) ]
+
+        cropperSubscriptions =
+            case cropper of
+                NotCropping ->
+                    Sub.none
+
+                Cropping cropperModel ->
+                    Sub.batch [ Cropper.subscriptions cropperModel |> Sub.map CropperMsg, fromCropper IllustrationCropped ]
     in
-    Sub.batch [ dragSubscription, fileContentRead IllustrationRead ]
+    Sub.batch [ dragSubscriptions, fileContentRead IllustrationRead, cropperSubscriptions ]
 
 
 port mouseUp : (Decode.Value -> msg) -> Sub msg
+
+
+port fromCropper : (String -> msg) -> Sub msg
+
+
+port toCropper : Cropper.CropData -> Cmd msg
 
 
 port fileSelected : String -> Cmd msg
@@ -341,33 +415,36 @@ port fileContentRead : (ImagePortData -> msg) -> Sub msg
 
 
 view : Model -> Html Msg
-view (Model { card }) =
-    div
-        [ style "margin-left" "50px"
-        , classes [ flex, flex_row ]
-        ]
-        [ tachyons.css
-        , viewCard card
-        , viewCardController card
+view (Model { card, cropper, draggedHiddenCard }) =
+    div []
+        [ div
+            [ style "margin-left" "50px"
+            , classes [ flex, flex_row ]
+            ]
+            [ tachyons.css
+            , viewCard card draggedHiddenCard
+            , viewCardController card
+            ]
+        , viewCropper cropper
         ]
 
 
-viewCard : Card.Model -> Html Msg
-viewCard cardModel =
+viewCard : Card.Model -> Maybe (Drag.Drag HiddenCard) -> Html Msg
+viewCard cardModel draggedHiddenCard =
     div
         (classes CardStyles.cardClasses :: toStyle (CardStyles.cardStyles "300px" "600px"))
-        [ viewIllustration cardModel.illustration cardModel.draggedHiddenCard cardModel.hiddenCards
+        [ viewIllustration cardModel.illustration draggedHiddenCard cardModel.hiddenCards
         , viewCardContent cardModel
         , CardView.viewNumber cardModel.number
         ]
 
 
-viewIllustration : CardIllustration -> Maybe (Card.Drag HiddenCard) -> Array HiddenCard -> Html Msg
+viewIllustration : CardIllustration -> Maybe (Drag.Drag HiddenCard) -> Array HiddenCard -> Html Msg
 viewIllustration illustration maybeDraggedHiddenCard hiddenCards =
     div
         [ style "width" "100%"
         , style "height" "60%"
-        , illustrationToBackgroundStyle illustration
+        , CardStyles.illustrationToBackgroundStyle illustration
         , style "border-bottom" "1px solid black"
         , id "js-area"
         , classes [ absolute, cover ]
@@ -392,7 +469,7 @@ targetTextContent =
     Decode.at [ "target", "textContent" ] Decode.string
 
 
-viewHiddenCard : Maybe (Card.Drag HiddenCard) -> HiddenCard -> Html Msg
+viewHiddenCard : Maybe (Drag.Drag HiddenCard) -> HiddenCard -> Html Msg
 viewHiddenCard maybeHiddenCard hiddenCard =
     let
         transformStyles =
@@ -596,10 +673,54 @@ viewHiddenCardForm hiddenCard =
         ]
 
 
-onMouseDown : (Card.DragStartDetails -> Msg) -> Attribute Msg
+viewCropper : Cropper -> Html Msg
+viewCropper cropper =
+    case cropper of
+        NotCropping ->
+            span [] []
+
+        Cropping cropperModel ->
+            div [ class "cropperOverlay" ]
+                [ viewCropperPopin cropperModel
+                ]
+
+
+viewCropperPopin : Cropper.Model -> Html Msg
+viewCropperPopin cropperModel =
+    div [ class "cropperPopin" ]
+        [ div [ style "flex-grow" "1" ] [ Cropper.view cropperModel |> Html.map CropperMsg ]
+        , viewCropperControls cropperModel
+        ]
+
+
+viewCropperControls : Cropper.Model -> Html Msg
+viewCropperControls cropperModel =
+    div []
+        [ div
+            [ classes [ mt3 ] ]
+            [ label [ for <| "zoom", classes [ f6, db, mb2 ] ] [ text "Zoom" ]
+            , input
+                [ id "zoom"
+                , name "zoom"
+                , type_ "range"
+                , Html.Attributes.min "0"
+                , Html.Attributes.max "1"
+                , Html.Attributes.step "0.05"
+                , value <| String.fromFloat cropperModel.zoom
+                , onInput Zoom
+                , classes [ db, hover_black, measure, pv2, br2, mb2, w_80 ]
+                ]
+                []
+            ]
+        , Forms.secondaryButton [ onClick CancelCropping ] [ text "Cancel" ]
+        , Forms.submitButton [ onClick ExportCroppedIllustration ] [ text "Use this image" ]
+        ]
+
+
+onMouseDown : (Drag.DragStartDetails -> Msg) -> Attribute Msg
 onMouseDown eventBuilder =
     Decode.map5
-        Card.DragStartDetails
+        Drag.DragStartDetails
         Position.decoder
         (Decode.at [ "target", "parentElement", "offsetWidth" ] (Decode.map round Decode.float))
         (Decode.at [ "target", "parentElement", "offsetHeight" ] (Decode.map round Decode.float))

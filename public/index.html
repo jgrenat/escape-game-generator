@@ -66,6 +66,40 @@
 
               reader.readAsDataURL(file);
           });
+
+          /* Cropper */
+          app.ports.toCropper.subscribe(function(data) {
+              const url = data.url;
+              const size = data.size;
+              const resized = data.resized;
+              const origin = data.origin;
+              const crop = data.crop;
+              const canvas = document.createElement('canvas');
+              canvas.width = crop.width;
+              canvas.height = crop.height;
+              const context = canvas.getContext('2d');
+              const imageObj = new Image();
+              imageObj.crossOrigin = "Anonymous";
+              imageObj.src = url;
+              imageObj.onerror = function() {
+                  alert("Image not available for cropping. Probably blocked by CORS policy.");
+              };
+              imageObj.onload = function() {
+                  context.drawImage(
+                      imageObj,
+                      0,
+                      0,
+                      size.width,
+                      size.height,
+                      -origin.x,
+                      -origin.y,
+                      resized.width,
+                      resized.height
+                  );
+                  const dataURL = canvas.toDataURL("image/jpeg", 1.0);
+                  app.ports.fromCropper.send(dataURL);
+              };
+          });
       </script>
   </body>
 </html>

@@ -2,15 +2,11 @@ module Data.Card exposing
     ( CardId
     , CardIllustration(..)
     , Content(..)
-    , Drag
-    , DragEndDetails
-    , DragStartDetails
     , HiddenCard
     , Model
     , contentToString
     , createCardCommand
     , decoder
-    , dragEndDecoder
     , encode
     , idParser
     , idToString
@@ -34,7 +30,6 @@ type alias Model =
     , cardContent : Content
     , illustration : CardIllustration
     , hiddenCards : Array HiddenCard
-    , draggedHiddenCard : Maybe (Drag HiddenCard)
     , id : CardId
     }
 
@@ -65,33 +60,6 @@ type alias HiddenCard =
     }
 
 
-type alias DragStartDetails =
-    { initialPosition : Position
-    , parentWidth : Int
-    , parentHeight : Int
-    , layerX : Int
-    , layerY : Int
-    }
-
-
-type alias DragEndDetails =
-    { finalPosition : Position
-    , parentPosition : Position
-    }
-
-
-type alias Drag a =
-    { element : a
-    , currentTopOffset : Int
-    , currentLeftOffset : Int
-    , initialPosition : Position
-    , parentWidth : Int
-    , parentHeight : Int
-    , layerX : Int
-    , layerY : Int
-    }
-
-
 decoder : Decoder Model
 decoder =
     Decode.succeed Model
@@ -100,7 +68,6 @@ decoder =
         |> JsonPipeline.required "cardContent" cardContentDecoder
         |> JsonPipeline.optional "illustration" illustrationDecoder NoIllustration
         |> JsonPipeline.required "hiddenCards" (Decode.array hiddenCardDecoder)
-        |> JsonPipeline.hardcoded Nothing
         |> JsonPipeline.required "id" cardIdDecoder
 
 
@@ -180,7 +147,7 @@ createCardCommand : Int -> Content -> (Model -> msg) -> Cmd msg
 createCardCommand number content event =
     Random.generate event
         (idGenerator
-            |> Random.map (Model 1 number content NoIllustration Array.empty Nothing)
+            |> Random.map (Model 1 number content NoIllustration Array.empty)
         )
 
 
@@ -231,19 +198,6 @@ illustrationDecoder =
                 )
         , Decode.null NoIllustration
         ]
-
-
-dragEndDecoder : Decoder DragEndDetails
-dragEndDecoder =
-    Decode.map2 DragEndDetails
-        (Decode.map2 Position
-            (Decode.at [ "finalPosition", "x" ] (Decode.map round Decode.float))
-            (Decode.at [ "finalPosition", "y" ] (Decode.map round Decode.float))
-        )
-        (Decode.map2 Position
-            (Decode.at [ "parentPosition", "x" ] (Decode.map round Decode.float))
-            (Decode.at [ "parentPosition", "y" ] (Decode.map round Decode.float))
-        )
 
 
 idParser : Url.Parser.Parser (CardId -> a) a
