@@ -22,20 +22,35 @@ view width height model =
         Card.IllustrationAndTextCardDetails details ->
             div
                 ([ classes Styles.cardClasses ] ++ toStyle (Styles.cardStyles width height))
-                [ viewIllustration cardModel.illustration cardModel.hiddenCards
+                [ viewHalfCardIllustration cardModel.illustration cardModel.hiddenCards
                 , viewCardContent details.cardContent
                 , viewNumber cardModel.number
                 ]
 
         Card.FullIllustrationCardDetails ->
-            span [] []
+            div ([ classes Styles.cardClasses ] ++ toStyle (Styles.cardStyles width height))
+                [ viewFullSizeIllustration cardModel.illustration cardModel.hiddenCards
+                , viewNumber cardModel.number
+                ]
 
 
-viewIllustration : Card.CardIllustration -> Array Card.HiddenCard -> Html msg
-viewIllustration illustration hiddenCards =
+viewHalfCardIllustration : Card.CardIllustration -> Array Card.HiddenCard -> Html msg
+viewHalfCardIllustration illustration hiddenCards =
     div
         [ style "width" "100%"
         , style "height" "60%"
+        , Styles.illustrationToBackgroundStyle illustration
+        , style "border-bottom" "1px solid black"
+        , classes [ absolute, cover ]
+        ]
+        (Array.map viewHiddenCard hiddenCards |> Array.toList |> List.reverse)
+
+
+viewFullSizeIllustration : Card.CardIllustration -> Array Card.HiddenCard -> Html msg
+viewFullSizeIllustration illustration hiddenCards =
+    div
+        [ style "width" "100%"
+        , style "height" "100%"
         , Styles.illustrationToBackgroundStyle illustration
         , style "border-bottom" "1px solid black"
         , classes [ absolute, cover ]

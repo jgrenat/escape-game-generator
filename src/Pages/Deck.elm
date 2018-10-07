@@ -29,7 +29,7 @@ onClickStopPropagation msg =
 
 
 type alias Config msg =
-    { createMsg : msg
+    { createMsg : Card.CardType -> msg
     , onEditCard : Card.Model -> msg
     , onRemoveCard : Card.Model -> msg
     }
@@ -121,6 +121,9 @@ removeCross onRemoveCard =
         [ text "X" ]
 
 
-viewControls : msg -> Html.Html msg
+viewControls : (Card.CardType -> msg) -> Html.Html msg
 viewControls createMsg =
-    div [ classes [ pv2 ] ] [ Forms.primaryButton [ onClick createMsg ] [ text "Create a new card" ] ]
+    div [ classes [ pv2 ] ]
+        [ Forms.primaryButton [ onClick (createMsg Card.IllustrationAndText), classes [ mr2 ] ] [ text "New \"Illustration and text\" card" ]
+        , Forms.primaryButton [ onClick (createMsg Card.FullIllustration) ] [ text "New \"Full illustration\" card" ]
+        ]

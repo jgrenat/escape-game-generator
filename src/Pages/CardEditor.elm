@@ -11,7 +11,7 @@ port module Pages.CardEditor exposing
 import Array exposing (Array)
 import Browser.Events
 import Cropper
-import Data.Card as Card exposing (CardId, CardIllustration, HiddenCard, contentToString, createCardCommand)
+import Data.Card as Card exposing (CardId, CardIllustration, HiddenCard, contentToString, createIllustrationAndTextCardCommand)
 import Data.Drag as Drag exposing (Drag)
 import Data.Position as Position exposing (Position)
 import Html exposing (Attribute, Html, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
@@ -321,7 +321,12 @@ update msg (Model model) =
                     Card.updateCardModel newCardModel card
 
                 updatedCropper =
-                    Cropper.init { url = illustrationDetails.contents, crop = { width = 280, height = 348 } }
+                    case Card.toCardTypeDetails card of
+                        Card.FullIllustrationCardDetails ->
+                            Cropper.init { url = illustrationDetails.contents, crop = { width = 280, height = 580 } }
+
+                        Card.IllustrationAndTextCardDetails _ ->
+                            Cropper.init { url = illustrationDetails.contents, crop = { width = 280, height = 348 } }
             in
             ( Model { model | card = updatedCard, cropper = Cropping updatedCropper }, Cmd.none, NoEvent )
 
@@ -477,27 +482,40 @@ viewCard model draggedHiddenCard =
         cardModel =
             Card.toCardModel model
 
-        cardTypeDetails =
-            Card.toCardTypeDetails model
+        cardSpecificContent =
+            case Card.toCardTypeDetails model of
+                Card.IllustrationAndTextCardDetails details ->
+                    [ viewIllustrationAndTextIllustration cardModel.illustration draggedHiddenCard cardModel.hiddenCards
+                    , viewCardContent details.cardContent
+                    ]
+
+                Card.FullIllustrationCardDetails ->
+                    [ viewFullIllustration cardModel.illustration draggedHiddenCard cardModel.hiddenCards
+                    ]
     in
-    case cardTypeDetails of
-        Card.IllustrationAndTextCardDetails details ->
-            div
-                (classes CardStyles.cardClasses :: toStyle (CardStyles.cardStyles "300px" "600px"))
-                [ viewIllustration cardModel.illustration draggedHiddenCard cardModel.hiddenCards
-                , viewCardContent details.cardContent
-                , CardView.viewNumber cardModel.number
-                ]
-
-        Card.FullIllustrationCardDetails ->
-            div [] []
+    div
+        (classes CardStyles.cardClasses :: toStyle (CardStyles.cardStyles "300px" "600px"))
+        (cardSpecificContent ++ [ CardView.viewNumber cardModel.number ])
 
 
-viewIllustration : CardIllustration -> Maybe (Drag.Drag HiddenCard) -> Array HiddenCard -> Html Msg
-viewIllustration illustration maybeDraggedHiddenCard hiddenCards =
+viewIllustrationAndTextIllustration : CardIllustration -> Maybe (Drag.Drag HiddenCard) -> Array HiddenCard -> Html Msg
+viewIllustrationAndTextIllustration illustration maybeDraggedHiddenCard hiddenCards =
     div
         [ style "width" "100%"
         , style "height" "60%"
+        , CardStyles.illustrationToBackgroundStyle illustration
+        , style "border-bottom" "1px solid black"
+        , id "js-area"
+        , classes [ absolute, cover ]
+        ]
+        (Array.map (viewHiddenCard maybeDraggedHiddenCard) hiddenCards |> Array.toList |> List.reverse)
+
+
+viewFullIllustration : CardIllustration -> Maybe (Drag.Drag HiddenCard) -> Array HiddenCard -> Html Msg
+viewFullIllustration illustration maybeDraggedHiddenCard hiddenCards =
+    div
+        [ style "width" "100%"
+        , style "height" "100%"
         , CardStyles.illustrationToBackgroundStyle illustration
         , style "border-bottom" "1px solid black"
         , id "js-area"

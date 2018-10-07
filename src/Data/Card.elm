@@ -1,13 +1,15 @@
 module Data.Card exposing
     ( CardId
     , CardIllustration(..)
+    , CardType(..)
     , CardTypeDetails(..)
     , Content
     , HiddenCard
     , IllustrationAndTextCardModel
     , Model
     , contentToString
-    , createCardCommand
+    , createFullIllustrationCardCommand
+    , createIllustrationAndTextCardCommand
     , decoder
     , encode
     , idParser
@@ -87,7 +89,7 @@ type alias HiddenCard =
 
 decoder : Decoder Model
 decoder =
-    cardTypeDecoder
+    Decode.field "type" cardTypeDecoder
         |> Decode.andThen
             (\cardType ->
                 case cardType of
@@ -108,10 +110,10 @@ cardTypeDecoder =
         |> Decode.andThen
             (\cardTypeString ->
                 case cardTypeString of
-                    "fullIllustration" ->
+                    "fullIllustrationCard" ->
                         Decode.succeed FullIllustration
 
-                    "illustrationAndText" ->
+                    "illustrationAndTextCard" ->
                         Decode.succeed IllustrationAndText
 
                     _ ->
@@ -166,16 +168,19 @@ encode model =
         cardModel =
             toCardModel model
 
-        specificFields =
+        ( typeField, specificFields ) =
             case model of
                 IllustrationAndTextCard _ illustrationAndTextCardModel ->
-                    [ ( "cardContent", contentToString illustrationAndTextCardModel.cardContent |> Encode.string ) ]
+                    ( Encode.string "illustrationAndTextCard"
+                    , [ ( "cardContent", contentToString illustrationAndTextCardModel.cardContent |> Encode.string ) ]
+                    )
 
                 FullIllustrationCard _ ->
-                    []
+                    ( Encode.string "fullIllustrationCard", [] )
     in
     Encode.object
-        ([ ( "nextHiddenCardId", Encode.int cardModel.nextHiddenCardId )
+        ([ ( "type", typeField )
+         , ( "nextHiddenCardId", Encode.int cardModel.nextHiddenCardId )
          , ( "number", Encode.int cardModel.number )
          , ( "illustration", encodeIllustration cardModel.illustration )
          , ( "hiddenCards", Encode.array encodeHiddenCard cardModel.hiddenCards )
@@ -262,8 +267,8 @@ toNumber model =
     toCardModel model |> .number
 
 
-createCardCommand : Int -> Content -> (Model -> msg) -> Cmd msg
-createCardCommand number content event =
+createIllustrationAndTextCardCommand : Int -> Content -> (Model -> msg) -> Cmd msg
+createIllustrationAndTextCardCommand number content event =
     Random.generate event
         (idGenerator
             |> Random.map (CardModel 1 number NoIllustration Array.empty)
@@ -272,6 +277,15 @@ createCardCommand number content event =
                     IllustrationAndTextCardModel content
                         |> IllustrationAndTextCard cardModel
                 )
+        )
+
+
+createFullIllustrationCardCommand : Int -> (Model -> msg) -> Cmd msg
+createFullIllustrationCardCommand number event =
+    Random.generate event
+        (idGenerator
+            |> Random.map (CardModel 1 number NoIllustration Array.empty)
+            |> Random.map FullIllustrationCard
         )
 
 

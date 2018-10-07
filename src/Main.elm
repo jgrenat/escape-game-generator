@@ -4,7 +4,7 @@ import Array exposing (Array)
 import Browser
 import Browser.Navigation as Navigation exposing (Key)
 import Cmd.Extra
-import Data.Card as Card exposing (Content(..), createCardCommand, idToString)
+import Data.Card as Card exposing (Content(..), idToString)
 import Html exposing (button, div, h1, text)
 import Json.Decode as Decode exposing (Value)
 import Json.Decode.Pipeline as JsonPipeline
@@ -73,7 +73,7 @@ newGameSet : Key -> ( Model, Cmd Msg )
 newGameSet key =
     let
         cardCommand =
-            createCardCommand 1 (Card.stringToContent "Random content") CardCreated
+            Card.createIllustrationAndTextCardCommand 1 (Card.stringToContent "Random content") CardCreated
     in
     ( Model Array.empty DeckPage AutoSave key, cardCommand )
 
@@ -131,7 +131,7 @@ type Msg
     | CardEditorPageMessage CardEditorPage.Msg
     | EditCard Card.Model
     | SaveDeck
-    | CreateCard
+    | CreateCard Card.CardType
     | RemoveCard Card.Model
     | CardCreated Card.Model
     | SetRoute (Maybe Route.Route)
@@ -180,7 +180,7 @@ update msg model =
         ( _, SaveDeck ) ->
             ( model, sendToSaveModule model )
 
-        ( DeckPage, CreateCard ) ->
+        ( DeckPage, CreateCard cardType ) ->
             let
                 biggestCardNumber =
                     Array.toList model.cards
@@ -190,7 +190,12 @@ update msg model =
                         |> Maybe.withDefault 1
 
                 newCardCommand =
-                    createCardCommand (biggestCardNumber + 1) (Card.stringToContent "The content of the card goes here") CardCreated
+                    case cardType of
+                        Card.FullIllustration ->
+                            Card.createFullIllustrationCardCommand (biggestCardNumber + 1) CardCreated
+
+                        Card.IllustrationAndText ->
+                            Card.createIllustrationAndTextCardCommand (biggestCardNumber + 1) (Card.stringToContent "The content of the card goes here") CardCreated
             in
             ( model, newCardCommand )
 
