@@ -25,12 +25,13 @@ contentStyles =
     , ( "height", "40%" )
     , ( "top", "60%" )
     , ( "background-color", "cornsilk" )
+    , ( "padding", "5% 4%" )
     ]
 
 
 contentClasses : List String
 contentClasses =
-    [ absolute, pa3, flex, justify_center, items_center, serif, f4 ]
+    [ absolute, flex, justify_center, items_center, serif, f4 ]
 
 
 illustrationToBackgroundStyle : Card.CardIllustration -> Html.Attribute msg

@@ -52,7 +52,7 @@ modifyUrl key =
 
 newUrl : Key -> Route -> Cmd msg
 newUrl key routeToTransform =
-    Debug.log "route" (routeToString routeToTransform)
+    routeToString routeToTransform
         |> Navigation.pushUrl key
 
 
@@ -63,9 +63,5 @@ load url =
 
 fromUrl : Url.Url -> Maybe Route
 fromUrl url =
-    let
-        test =
-            Debug.log "test" url
-    in
     { url | path = Maybe.withDefault "" url.fragment, fragment = Nothing }
         |> UrlParser.parse route
