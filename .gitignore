@@ -3,6 +3,7 @@
 
 # Distribution
 build/
+dist/
 
 # elm-package generated files
 elm-stuff
@@ -15,3 +16,6 @@ node_modules
 
 # Desktop Services Store on macOS
 .DS_Store
+
+# Cache
+.cache/

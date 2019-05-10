@@ -4,15 +4,15 @@ import Array exposing (Array)
 import Browser
 import Browser.Navigation as Navigation exposing (Key)
 import Cmd.Extra
-import Data.Card as Card exposing (Content(..), idToString)
-import Html exposing (button, div, h1, text)
+import Data.Card as Card exposing (Content(..))
+import Html exposing (div, h1, text)
 import Json.Decode as Decode exposing (Value)
 import Json.Decode.Pipeline as JsonPipeline
 import Json.Encode
 import Pages.CardEditor as CardEditorPage
 import Pages.Deck
 import Route
-import Tachyons.Tachyons exposing (classes, tachyons)
+import Tachyons.Tachyons exposing (tachyons)
 import Time
 import Url exposing (Url)
 
@@ -64,6 +64,8 @@ init savedGame url key =
 deckPageConfig : Pages.Deck.Config Msg
 deckPageConfig =
     { createMsg = CreateCard
+    , exportDeck = ExportDeck
+    , importDeck = ImportDeck
     , onEditCard = EditCard
     , onRemoveCard = RemoveCard
     }
@@ -131,6 +133,9 @@ type Msg
     | CardEditorPageMessage CardEditorPage.Msg
     | EditCard Card.Model
     | SaveDeck
+    | ImportDeck
+    | ExportDeck
+    | DeckImported (Array Card.Model)
     | CreateCard Card.CardType
     | RemoveCard Card.Model
     | CardCreated Card.Model
@@ -179,6 +184,15 @@ update msg model =
 
         ( _, SaveDeck ) ->
             ( model, sendToSaveModule model )
+
+        ( _, ExportDeck ) ->
+            ( model, sendToExportModule model.cards )
+
+        ( _, ImportDeck ) ->
+            ( model, importDeck "deckImportInput" )
+
+        ( _, DeckImported importedCards ) ->
+            ( { model | cards = Array.append model.cards importedCards }, Cmd.none )
 
         ( DeckPage, CreateCard cardType ) ->
             let
@@ -317,6 +331,22 @@ sendToSaveModule model =
 port toSaveModule : String -> Cmd msg
 
 
+sendToExportModule : Array Card.Model -> Cmd Msg
+sendToExportModule cards =
+    Json.Encode.object
+        [ ( "version", Json.Encode.int 1 )
+        , ( "cards", Json.Encode.array Card.encode cards )
+        ]
+        |> Json.Encode.encode 0
+        |> toExportModule
+
+
+port toExportModule : String -> Cmd msg
+
+
+port importDeck : String -> Cmd msg
+
+
 encodeModel : Model -> Json.Encode.Value
 encodeModel model =
     Json.Encode.object
@@ -341,6 +371,9 @@ encodeAutoSave saveOption =
 -- SUBSCRIPTIONS
 
 
+port deckImported : (String -> msg) -> Sub msg
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
@@ -356,4 +389,11 @@ subscriptions model =
 
             _ ->
                 Sub.none
+        , deckImported (Decode.decodeString deckImportDecoder >> Result.withDefault NoOp)
         ]
+
+
+deckImportDecoder : Decode.Decoder Msg
+deckImportDecoder =
+    Decode.field "cards" cardsArrayDecoder
+        |> Decode.map DeckImported

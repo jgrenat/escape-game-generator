@@ -3,11 +3,11 @@ module Pages.Deck exposing (Config, view)
 import Array exposing (Array)
 import Data.Card as Card
 import Dict exposing (Dict)
-import Html exposing (Html, button, div, h2, li, p, span, text, ul)
-import Html.Attributes exposing (class, style)
-import Html.Events exposing (onClick)
+import Html exposing (Html, div, h2, input, label, li, p, span, text, ul)
+import Html.Attributes exposing (class, for, id, placeholder, style, type_)
+import Html.Events exposing (on, onClick)
 import Json.Decode as Decode
-import Tachyons.Classes exposing (absolute, bg_white_40, bg_white_60, bg_white_70, bg_white_80, br1, f3, flex, flex_wrap, mb2, mr2, pa1, pa2, pointer, pr1, pt1, pv2, relative, right_0, right_1, top_0, top_1)
+import Tachyons.Classes exposing (absolute, bg_white_60, br1, f3, flex, flex_wrap, mb2, mr2, pa2, pointer, pv2, relative, right_0, top_0)
 import Tachyons.Tachyons exposing (classes)
 import Views.Cards.StaticCard as CardView
 import Views.Utils.Forms as Forms
@@ -30,16 +30,18 @@ onClickStopPropagation msg =
 
 type alias Config msg =
     { createMsg : Card.CardType -> msg
+    , exportDeck : msg
+    , importDeck : msg
     , onEditCard : Card.Model -> msg
     , onRemoveCard : Card.Model -> msg
     }
 
 
 view : Config msg -> Array Card.Model -> Html msg
-view { createMsg, onEditCard, onRemoveCard } cards =
+view { createMsg, exportDeck, importDeck, onEditCard, onRemoveCard } cards =
     div []
         [ h2 [] [ text "My deck" ]
-        , viewControls createMsg
+        , viewControls createMsg exportDeck importDeck
         , viewCards onEditCard onRemoveCard cards
         , viewDuplicateCardNumbers cards
         ]
@@ -121,9 +123,20 @@ removeCross onRemoveCard =
         [ text "X" ]
 
 
-viewControls : (Card.CardType -> msg) -> Html.Html msg
-viewControls createMsg =
+viewControls : (Card.CardType -> msg) -> msg -> msg -> Html.Html msg
+viewControls createMsg exportDeck importDeck =
     div [ classes [ pv2 ] ]
-        [ Forms.primaryButton [ onClick (createMsg Card.IllustrationAndText), classes [ mr2 ] ] [ text "New \"Illustration and text\" card" ]
-        , Forms.primaryButton [ onClick (createMsg Card.FullIllustration) ] [ text "New \"Full illustration\" card" ]
+        [ div []
+            [ Forms.primaryButton [ onClick (createMsg Card.IllustrationAndText), classes [ mr2 ] ] [ text "New \"Illustration and text\" card" ]
+            , Forms.primaryButton [ onClick (createMsg Card.FullIllustration), classes [ mr2 ] ] [ text "New \"Full illustration\" card" ]
+            , Forms.primaryButton [ onClick exportDeck ] [ text "Export deck" ]
+            ]
+        , input
+            [ type_ "file"
+            , id "deckImportInput"
+            , placeholder "Import deck"
+            , classes [ mb2 ]
+            , on "change" (Decode.succeed importDeck)
+            ]
+            []
         ]

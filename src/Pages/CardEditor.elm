@@ -11,15 +11,15 @@ port module Pages.CardEditor exposing
 import Array exposing (Array)
 import Browser.Events
 import Cropper
-import Data.Card as Card exposing (CardId, CardIllustration, HiddenCard, contentToString, createIllustrationAndTextCardCommand)
+import Data.Card as Card exposing (CardId, CardIllustration, HiddenCard, contentToString)
 import Data.Drag as Drag exposing (Drag)
 import Data.Position as Position exposing (Position)
-import Html exposing (Attribute, Html, div, fieldset, form, h1, img, input, label, legend, small, span, text, textarea)
-import Html.Attributes exposing (class, contenteditable, for, id, name, src, step, style, type_, value)
+import Html exposing (Attribute, Html, div, fieldset, form, input, label, legend, span, text, textarea)
+import Html.Attributes exposing (class, contenteditable, for, id, name, step, style, type_, value)
 import Html.Events exposing (on, onClick, onInput)
 import Json.Decode as Decode exposing (Decoder)
 import Return
-import Tachyons.Classes exposing (absolute, b, b__black_10, b__black_20, ba, bg_gold, black_70, br2, br3, br4, br_100, cover, db, f2, f3, f4, f6, flex, flex_row, fw6, h2, hover_black, items_center, justify_center, left_0, left_1, lh_copy, mb2, measure, ml1, ml2, ml3, ml5, mt2, mt3, o_10, o_20, o_50, o_60, o_90, overflow_hidden, pa2, pa3, ph1, ph2, pt1, pv2, relative, right_0, serif, top_0, top_1, w2, w5, w_100, w_20, w_50, w_80, w_90, white, white_20, white_40, white_50, white_70)
+import Tachyons.Classes exposing (absolute, b, b__black_20, ba, br2, cover, db, f4, f6, flex, flex_row, hover_black, mb2, measure, ml5, mt3, o_10, pa2, ph1, pt1, pv2, relative, right_0, top_0, w_100, w_50, w_80)
 import Tachyons.Tachyons exposing (classes, tachyons)
 import Views.Cards.CardStyles as CardStyles exposing (toStyle)
 import Views.Cards.StaticCard as CardView
