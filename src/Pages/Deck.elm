@@ -3,10 +3,11 @@ module Pages.Deck exposing (Config, view)
 import Array exposing (Array)
 import Data.Card as Card
 import Dict exposing (Dict)
-import Html exposing (Html, div, h2, input, label, li, p, span, text, ul)
-import Html.Attributes exposing (class, for, id, placeholder, style, type_)
+import Html exposing (Html, a, div, h2, input, li, p, span, text, ul)
+import Html.Attributes exposing (class, id, placeholder, style, type_)
 import Html.Events exposing (on, onClick)
 import Json.Decode as Decode
+import Route exposing (href)
 import Tachyons.Classes exposing (absolute, bg_white_60, br1, f3, flex, flex_wrap, mb2, mr2, pa2, pointer, pv2, relative, right_0, top_0)
 import Tachyons.Tachyons exposing (classes)
 import Views.Cards.StaticCard as CardView
@@ -37,11 +38,11 @@ type alias Config msg =
     }
 
 
-view : Config msg -> Array Card.Model -> Html msg
-view { createMsg, exportDeck, importDeck, onEditCard, onRemoveCard } cards =
+view : Config msg -> String -> Array Card.Model -> Html msg
+view { createMsg, exportDeck, importDeck, onEditCard, onRemoveCard } deckId cards =
     div []
         [ h2 [] [ text "My deck" ]
-        , viewControls createMsg exportDeck importDeck
+        , viewControls deckId createMsg exportDeck importDeck
         , viewCards onEditCard onRemoveCard cards
         , viewDuplicateCardNumbers cards
         ]
@@ -123,13 +124,14 @@ removeCross onRemoveCard =
         [ text "X" ]
 
 
-viewControls : (Card.CardType -> msg) -> msg -> msg -> Html.Html msg
-viewControls createMsg exportDeck importDeck =
+viewControls : String -> (Card.CardType -> msg) -> msg -> msg -> Html.Html msg
+viewControls deckId createMsg exportDeck importDeck =
     div [ classes [ pv2 ] ]
         [ div []
             [ Forms.primaryButton [ onClick (createMsg Card.IllustrationAndText), classes [ mr2 ] ] [ text "New \"Illustration and text\" card" ]
             , Forms.primaryButton [ onClick (createMsg Card.FullIllustration), classes [ mr2 ] ] [ text "New \"Full illustration\" card" ]
             , Forms.primaryButton [ onClick exportDeck ] [ text "Export deck" ]
+            , a [ href (Route.PrintDeck deckId) ] [ text "Print mode" ]
             ]
         , input
             [ type_ "file"

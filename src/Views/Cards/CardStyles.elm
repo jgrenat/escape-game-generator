@@ -26,6 +26,7 @@ contentStyles =
     , ( "top", "60%" )
     , ( "background-color", "cornsilk" )
     , ( "padding", "5% 4%" )
+    , ( "font-size", "16px" )
     ]
 
 

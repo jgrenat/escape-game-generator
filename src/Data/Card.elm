@@ -23,7 +23,6 @@ module Data.Card exposing
     )
 
 import Array exposing (Array)
-import Data.Position exposing (Position)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as JsonPipeline
 import Json.Encode as Encode

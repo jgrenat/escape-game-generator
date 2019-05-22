@@ -1,4 +1,4 @@
-module Route exposing (Route(..), fromUrl, href, load, modifyUrl, newUrl, route)
+module Route exposing (Route(..), fromUrl, href, load, newUrl, routeParser)
 
 import Browser.Navigation as Navigation exposing (Key)
 import Data.Card as Card
@@ -11,14 +11,16 @@ import Url.Parser as UrlParser exposing ((</>), Parser, s)
 type Route
     = Home
     | Deck String
+    | PrintDeck String
     | DeckCard String Card.CardId
 
 
-route : Parser (Route -> a) a
-route =
+routeParser : Parser (Route -> a) a
+routeParser =
     UrlParser.oneOf
         [ UrlParser.map Home (s "/")
         , UrlParser.map DeckCard (s "deck" </> UrlParser.string </> s "cards" </> Card.idParser)
+        , UrlParser.map PrintDeck (s "deck" </> UrlParser.string </> s "print")
         , UrlParser.map Deck (s "deck" </> UrlParser.string)
         ]
 
@@ -36,6 +38,9 @@ routeToString page =
 
                 Deck deckId ->
                     [ "deck", deckId ]
+
+                PrintDeck deckId ->
+                    [ "deck", deckId, "print" ]
     in
     "#/" ++ String.join "/" pieces
 
@@ -43,11 +48,6 @@ routeToString page =
 href : Route -> Attribute msg
 href linkRoute =
     Attributes.href (routeToString linkRoute)
-
-
-modifyUrl : Key -> Route -> Cmd msg
-modifyUrl key =
-    routeToString >> Navigation.replaceUrl key
 
 
 newUrl : Key -> Route -> Cmd msg
@@ -64,4 +64,4 @@ load url =
 fromUrl : Url.Url -> Maybe Route
 fromUrl url =
     { url | path = Maybe.withDefault "" url.fragment, fragment = Nothing }
-        |> UrlParser.parse route
+        |> UrlParser.parse routeParser

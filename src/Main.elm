@@ -1,4 +1,4 @@
-port module Main exposing (Model, Msg(..), Page(..), SaveOption(..), autoSaveDecoder, cardsArrayDecoder, deckPageConfig, encodeAutoSave, encodeModel, findIndexForCard, init, main, modelDecoder, newGameSet, replaceCardInArray, sendToSaveModule, setRoute, subscriptions, toSaveModule, update, view)
+port module Main exposing (Model, Msg(..), Page(..), SaveOption(..), autoSaveDecoder, cardsArrayDecoder, deckPageConfig, encodeAutoSave, encodeModel, init, main, modelDecoder, newGameSet, replaceCardInArray, sendToSaveModule, setRoute, subscriptions, toSaveModule, update, view)
 
 import Array exposing (Array)
 import Browser
@@ -11,6 +11,7 @@ import Json.Decode.Pipeline as JsonPipeline
 import Json.Encode
 import Pages.CardEditor as CardEditorPage
 import Pages.Deck
+import Pages.PrintDeck as PrintDeck
 import Route
 import Tachyons.Tachyons exposing (tachyons)
 import Time
@@ -18,8 +19,9 @@ import Url exposing (Url)
 
 
 type Page
-    = DeckPage
+    = DeckPage String
     | CardEditorPage Card.Model CardEditorPage.Model
+    | PrintDeckPage String
 
 
 main : Program String Model Msg
@@ -57,6 +59,9 @@ init savedGame url key =
                 |> Maybe.withDefault model
                 |> Cmd.Extra.withNoCmd
 
+        Just (Route.PrintDeck deckId) ->
+            ( { model | page = PrintDeckPage deckId }, Cmd.none )
+
         _ ->
             ( model, Cmd.none )
 
@@ -77,7 +82,7 @@ newGameSet key =
         cardCommand =
             Card.createIllustrationAndTextCardCommand 1 (Card.stringToContent "Random content") CardCreated
     in
-    ( Model Array.empty DeckPage AutoSave key, cardCommand )
+    ( Model Array.empty (DeckPage "randomId") ManualOnly key, cardCommand )
 
 
 
@@ -101,7 +106,7 @@ modelDecoder : Key -> Decode.Decoder Model
 modelDecoder key =
     Decode.succeed Model
         |> JsonPipeline.required "cards" cardsArrayDecoder
-        |> JsonPipeline.hardcoded DeckPage
+        |> JsonPipeline.hardcoded (DeckPage "randomId")
         |> JsonPipeline.required "autosave" autoSaveDecoder
         |> JsonPipeline.hardcoded key
 
@@ -165,7 +170,7 @@ update msg model =
                             ( CardEditorPage cardModel updatedModel, Cmd.none )
 
                         _ ->
-                            ( DeckPage, Route.newUrl model.navigationKey Route.Home )
+                            ( model.page, Route.newUrl model.navigationKey Route.Home )
             in
             ( { model | page = newPage, cards = updatedCards }
             , Cmd.batch
@@ -174,7 +179,7 @@ update msg model =
                 ]
             )
 
-        ( DeckPage, EditCard card ) ->
+        ( DeckPage _, EditCard card ) ->
             let
                 newUrlCmd =
                     Route.DeckCard "1" (Card.toCardModel card |> .id)
@@ -194,7 +199,7 @@ update msg model =
         ( _, DeckImported importedCards ) ->
             ( { model | cards = Array.append model.cards importedCards }, Cmd.none )
 
-        ( DeckPage, CreateCard cardType ) ->
+        ( DeckPage _, CreateCard cardType ) ->
             let
                 biggestCardNumber =
                     Array.toList model.cards
@@ -213,14 +218,14 @@ update msg model =
             in
             ( model, newCardCommand )
 
-        ( DeckPage, RemoveCard cardToRemove ) ->
+        ( DeckPage _, RemoveCard cardToRemove ) ->
             let
                 newCards =
                     Array.filter ((/=) cardToRemove) model.cards
             in
             ( { model | cards = newCards }, Cmd.none )
 
-        ( DeckPage, CardCreated cardModel ) ->
+        ( DeckPage _, CardCreated cardModel ) ->
             ( { model | cards = Array.push cardModel model.cards }, Cmd.none )
 
         ( _, SetRoute routeMaybe ) ->
@@ -253,7 +258,13 @@ setRoute routeMaybe model =
         Just route ->
             case route of
                 Route.Home ->
-                    ( { model | page = DeckPage }, Cmd.none )
+                    ( { model | page = DeckPage "randomId" }, Cmd.none )
+
+                Route.Deck deckId ->
+                    ( { model | page = DeckPage deckId }, Cmd.none )
+
+                Route.PrintDeck deckId ->
+                    ( { model | page = PrintDeckPage deckId }, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -275,25 +286,6 @@ replaceCardInArray oldCard newCard cards =
         cards
 
 
-findIndexForCard : Card.Model -> Array Card.Model -> Maybe Int
-findIndexForCard cardToFind cards =
-    Array.indexedMap (\a b -> ( a, b )) cards
-        |> Array.foldl
-            (\( id, card ) match ->
-                case match of
-                    Nothing ->
-                        if card == cardToFind then
-                            Just id
-
-                        else
-                            Nothing
-
-                    _ ->
-                        match
-            )
-            Nothing
-
-
 
 -- VIEW
 
@@ -308,11 +300,14 @@ view model =
         [ tachyons.css
         , h1 [] [ text pageTitle ]
         , case model.page of
-            DeckPage ->
-                Pages.Deck.view deckPageConfig model.cards
+            DeckPage deckId ->
+                Pages.Deck.view deckPageConfig deckId model.cards
 
             CardEditorPage _ cardEditorPageModel ->
                 CardEditorPage.view cardEditorPageModel |> Html.map CardEditorPageMessage
+
+            PrintDeckPage _ ->
+                PrintDeck.view model.cards
         ]
         |> List.singleton
         |> Browser.Document pageTitle
