@@ -8,12 +8,11 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "elm-hot": "^1.0.1",
-    "node-elm-compiler": "^5.0.3"
+    "elm-live": "^4.0.1"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "elm-live ./src/Main.elm --dir=./build --output=build/elm.js --before-build='./copy-assets.sh'",
+    "start": "elm-live ./src/Main.elm --dir=./build  --before-build='./copy-assets.sh' -- --output=build/elm.js",
     "copy:assets": "cpy 'public/*' build"
   },
   "repository": {

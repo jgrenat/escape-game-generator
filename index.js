@@ -66,6 +66,7 @@ app.ports.fileSelected.subscribe(function (id) {
             filename: file.name
         };
 
+
         app.ports.fileContentRead.send(portData);
     });
 
